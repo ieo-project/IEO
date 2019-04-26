@@ -1,0 +1,28 @@
+
+INteressting ayttibutes:
+
+
+type
+re/prospective_colection
+gender
+race
+history_of_other_malignacy
+history_noeadjunvant_treatment --> pretractament
+vital_status
+laterality --> on es troba el tumor, dreta o esquerra
+initial_pathological_dx_year ???????? pk fa normal distribution?
+lymph_nodes_examined_count
+ajcc_pathologic_tumor_stage
+age_at_initial_pathologic_diagnosis --> veure si afecta a viejos o a joves
+icd_o_3_histology ?????? NI puta del que és
+tissue_source_site
+birth_days_to --> dies des del naixement fins que et van diagnosticar
+last_contact_days_to --> serveix per filtrar els pacients que no sha tingut massa seguiment
+ajcc_tumor_pathological_pt
+ajcc_tumor_pathological_pn
+ajcc_tumor_pathological_pm
+tumor_grade
+serum_calcium_level
+hemoglobin_level
+platelet_count
+white_cell_count
