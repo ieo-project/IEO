@@ -44,7 +44,7 @@ into the output of the report.
 
 ```{r, message=FALSE}
 library(SummarizedExperiment)
-setwd("D:/Documents/BIM/3Q/IEO/project")
+setwd("/home/guille/Guille/MBHS/3T/IEO/project")
 se <- readRDS("seKIRC.rds")
 se
 ```
@@ -101,7 +101,7 @@ create a `DGEList' object.
 library(edgeR)
 
 dge <- DGEList(counts=assays(se)$counts, genes=mcols(se))
-saveRDS(dge, "dge.rds")
+saveRDS(dge, file.path("results", "dge.rds"))
 ```
 
 Now calculate $\log_2$ CPM values of expression and put them as an additional
@@ -147,14 +147,14 @@ sort(sampledepth)
 We must eliminate low depth samples...
 
 ```{r}
-#threshold <- (sum(colSums(assays(se)$counts))/1e6)/ncol(se)
-#max <- max(colSums(assays(se)$counts)/1e6)
-#t <- 0.05*max
-#t
+threshold <- (sum(colSums(assays(se)$counts))/1e6)/ncol(se)
+max <- max(colSums(assays(se)$counts)/1e6)
+t <- 0.05*max
+t
 threshold <- 21
-depth <- colSums(assays(se)$counts)/1e6 > threshold
-se_depth <- se[, depth]
-dge_depth <- dge[, depth]
+mask <- colSums(assays(se)$counts)/1e6 > threshold
+good_depth <- se[,mask]
+good_depth
 ```
 
 ## Distribution of expression levels among samples
@@ -173,13 +173,16 @@ file; see http://yihui.name/knitr/options for full details.
 ```{r distRawExp, echo=FALSE, fig.height=4, fig.width=10, out.width="800px", fig.cap="Non-parametric density distribution of expression profiles per sample.", message=FALSE}
 library(geneplotter)
 par(mfrow=c(1, 2))
-#not_na <- !is.na(good_depth$race)
-#se_masked <- good_depth[,mask]
+mask <- !is.na(good_depth$race)
+se_masked <- good_depth[,mask]
 
 multidensity(as.list(as.data.frame(assays(se[, good_depth$type == "tumor"])$logCPM)),
                           xlab="log 2 CPM", legend=NULL, main="tumor", las=1)
 multidensity(as.list(as.data.frame(assays(se[, good_depth$type == "normal"])$logCPM)),
                           xlab="log 2 CPM", legend=NULL, main="normal", las=1)
+boxplot(assays(se)$logCPM, col = "gray", xlab = "Samples", ylab = expression(log[2] *
+"CPM"), cex.axis = 1.2, cex.lab = 1.5, las = 1)
+
 ```
 
 We do not appreciate substantial differences between the samples in the
@@ -191,7 +194,7 @@ Let's calculate now the average expression per gene through all the samples.
 Figure \@ref(fig:exprdist) shows the distribution of those values across genes.
 
 ```{r exprdist, echo=FALSE, out.width="400px", fig.cap="Distribution of average expression level per gene."}
-avgexp <- rowMeans(assays(se_depth)$logCPM)
+avgexp <- rowMeans(assays(good_depth)$logCPM)
 hist(avgexp, xlab="log2 CPM", main="", las=1)
 abline(v=1, col="red", lwd=2)
 ```
@@ -203,26 +206,21 @@ of expression to select genes being expressed across samples. Using this cutoff 
 to filter out lowly-expressed genes.
 
 ```{r}
-exp <- avgexp > 1
-se_exp <- se_depth[exp, ]
-dim(se_exp)
-dge_exp <- dge_depth[exp, ]
-dim(dge_exp)
-
-par(mar = c(4, 5, 1, 1))
-h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), main = "", 
-    las = 1, col = "grey", cex.axis = 1.2, cex.lab = 1.5)
-x <- cut(rowMeans(assays(se_exp)$logCPM), breaks = h$breaks)
-lines(h$mids, table(x), type = "h", lwd = 10, lend = 1, col = "darkred")
-legend("topright", c("All genes", "Filtered genes"), fill = c("grey", "darkred"))
-
+# remake dge again with the good_depth values
+dge <- DGEList(counts=assays(good_depth)$counts, genes=mcols(se))
+mask <- avgexp > 1
+dim(good_depth)
+se.filt <- good_depth[mask, ]
+dim(se.filt)
+dge.filt <- dge[mask, ]
+dim(dge.filt)
 ```
 
 Store un-normalized versions of the filtered expression data.
 
 ```{r}
-#saveRDS(se_exp, file.path("results", "se.unnorm.rds"))
-#saveRDS(dge_exp, file.path("results", "dge.filt.unnorm.rds"))
+saveRDS(se.filt, file.path("results", "se.filt.unnorm.rds"))
+saveRDS(dge.filt, file.path("results", "dge.filt.unnorm.rds"))
 ```
 
 ## Normalization
@@ -230,14 +228,14 @@ Store un-normalized versions of the filtered expression data.
 We calculate now the normalization factors on the filtered expression data set.
 
 ```{r}
-dge_exp <- calcNormFactors(dge_exp)
+dge.filt <- calcNormFactors(dge.filt)
 ```
 
 Replace the raw log2 CPM units in the corresponding assay element of the `SummarizedExperiment`
 object, by the normalized ones.
 
 ```{r}
-assays(se_exp)$logCPM <- cpm(dge_exp, log=TRUE, normalized.lib.sizes=TRUE, prior.count=0.25)
+assays(se.filt)$logCPM <- cpm(dge.filt, log=TRUE, normalized.lib.sizes=TRUE, prior.count=0.25)
 ```
 
 Store normalized versions of the filtered expression data.
@@ -261,24 +259,20 @@ control the relative image size in *inches*. The final image size results from
 --->
 
 ```{r maPlotsTumor, fig.height=36, fig.width=6, dpi=100, echo=FALSE, fig.cap="MA-plots of the tumor samples."}
-par(mfrow=c(22, 3), mar=c(4, 5, 3, 1))
-#setmp <- se_exp[, se_exp$type == "tumor"]
-#dgetmp <- dge_exp[, se_exp$type == "tumor"]
-#for (i in 1:ncol(setmp)) {
-#  A <- rowMeans(assays(setmp)$logCPM)
-#  M <- assays(setmp)$logCPM[, i] - A
-#  samplename <- substr(as.character(setmp$bcr_patient_barcode[i]), 1, 12)
-#  smoothScatter(A, M, main=samplename, las=1)
-#  abline(h=0, col="blue", lwd=2)
-#  lo <- lowess(M ~ A)
-#  lines(lo$x, lo$y, col="red", lwd=2)
-#}
-dge_exp$samples$group <- se_exp$type
-table(dge_exp$samples$group)
-dge2 <- DGEList(counts = assays(se_exp)$counts, genes = as.data.frame(mcols(se_exp)), group = se_exp$type)
 
-plotSmear(dge2, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
-abline(h = 0, col = "blue", lwd = 2)
+# Tumor
+par(mfrow=c(22, 3), mar=c(4, 5, 3, 1))
+setmp <- se.filt[, se.filt$type == "tumor"]
+dgetmp <- dge.filt[, se.filt$type == "tumor"]
+for (i in 1:ncol(setmp)) {
+  A <- rowMeans(assays(setmp)$logCPM)
+  M <- assays(setmp)$logCPM[, i] - A
+  samplename <- substr(as.character(setmp$bcr_patient_barcode[i]), 1, 12)
+  smoothScatter(A, M, main=samplename, las=1)
+  abline(h=0, col="blue", lwd=2)
+  lo <- lowess(M ~ A)
+  lines(lo$x, lo$y, col="red", lwd=2)
+}
 
 ```
 
@@ -286,18 +280,18 @@ We do not observe samples with major expression-level dependent biases. Let's
 look now to the normal samples in Figure \@ref(fig:maPlotsNormal).
 
 ```{r maPlotsNormal, fig.height=18, fig.width=6, dpi=100, echo=FALSE, fig.cap="MA-plots of the normal samples."}
-#par(mfrow=c(9, 3), mar=c(4, 5, 3, 1))
-#setmp <- se.filt[, se.filt$type == "normal"]
-#dgetmp <- dge.filt[, se$type == "normal"]
-#for (i in 1:ncol(setmp)) {
-#  A <- rowMeans(assays(setmp)$logCPM)
-#  M <- assays(setmp)$logCPM[, i] - A
-#  samplename <- substr(as.character(setmp$bcr_patient_barcode[i]), 1, 12)
-#  smoothScatter(A, M, main=samplename, las=1)
-#  abline(h=0, col="blue", lwd=2)
-#  lo <- lowess(M ~ A)
-#  lines(lo$x, lo$y, col="red", lwd=2)
-#}
+par(mfrow=c(9, 3), mar=c(4, 5, 3, 1))
+setmp <- se.filt[, se.filt$type == "normal"]
+dgetmp <- dge.filt[, se.filt$type == "normal"]
+for (i in 1:ncol(setmp)) {
+  A <- rowMeans(assays(setmp)$logCPM)
+  M <- assays(setmp)$logCPM[, i] - A
+  samplename <- substr(as.character(setmp$bcr_patient_barcode[i]), 1, 12)
+  smoothScatter(A, M, main=samplename, las=1)
+  abline(h=0, col="blue", lwd=2)
+  lo <- lowess(M ~ A)
+  lines(lo$x, lo$y, col="red", lwd=2)
+}
 ```
 
 We do not observe either important expression-level dependent biases among the normal samples.
@@ -325,40 +319,46 @@ table(samplevial)
 
 From this information we can make the following observations:
 
-  * All samples were sequenced at the same center
+  * Samples were collected across different tissue source sites (TSS), but some of them have only 1 sample. This might produce batch effect.
+
+  * All samples were sequenced at the same center (07)
+  
+  * All samples were sequenced in different plates, but some of them have only 1 sample. This might produce batch effect.
 
   * All samples belong to one of two combinations of tissue type and vial, matching the
-    expected tumor and normal distribution.
-
-  * Samples were collected across different tissue source sites (TSS).
-
-  * All samples were sequenced within the same plate, except for the following one:
-
+    expected tumor and normal distribution, except 4 of them:
+    
 ```{r}
-colnames(se.filt)[plate == "2403"]
+colnames(se.filt)[samplevial == "01B"]
+colnames(se.filt)[samplevial == "05A"]
 ```
 
-  * All samples were sequenced using one of two portion and analyte combinations except fo the
-    following one:
+  * All samples were sequenced using one of three portion and analyte combinations except for the
+    following ones:
 
 ```{r}
+colnames(se.filt)[portionanalyte == "03R"]
+colnames(se.filt)[portionanalyte == "12R"]
+colnames(se.filt)[portionanalyte == "13R"]
 colnames(se.filt)[portionanalyte == "21R"]
 ```
 
-We are going to use the TSS as surrogate of batch effect indicator. Considering our outcome
+We are going to use the previous variables as surrogate of batch effect indicator. Considering our outcome
 of interest as molecular changes between sample types, tumor vs. normal, we will examine now
-the cross-classification of this outcome with TSS.
+the cross-classification of this outcome with TSS, plate, portionanalyte and samplevial
 
 ```{r}
 table(data.frame(TYPE=se.filt$type, TSS=tss))
+table(data.frame(TYPE=se.filt$type, PLATE=plate))
+table(data.frame(TYPE=se.filt$type, SAMPLEVIAL=samplevial))
+table(data.frame(TYPE=se.filt$type, PORTIONANALYTE=portionanalyte))
+
 ```
 
-Observe that normal tissues with `TSS=KM` or `TSS=KO` are under-represented with respect to
-the tumor tissues. If TSS is a source of expression variability, this under-representation
-of those two TSS in the normal samples may lead to a potential confounding effect.
+We can observe that normal tissues are under-represented with respect to the tumor tissues in nearly all of the tissues. If TSS is a source of expression variability, this under-representation of those two TSS in the normal samples may lead to a potential confounding effect. The same happens with Plate and Portion Analyte.
 
 We examine now how samples group together by hierarchical clustering and multidimensional
-scaling, annotating the outcome of interest and the the surrogate of batch indicator. We
+scaling, annotating the outcome of interest and the surrogate of batch indicator. We
 calculate again log CPM values with a higher prior count to moderate extreme fold-changes
 produced by low counts. The resulting dendrogram is shown in Figure \@ref(fig:sampleClustering).
 
