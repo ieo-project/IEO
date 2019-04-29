@@ -15,7 +15,7 @@ library(knitr)
 library(SummarizedExperiment)
 library(edgeR)
 library(geneplotter)
-setwd("/home/guille/Guille/MBHS/3T/IEO/project")
+#setwd("/home/guille/Guille/MBHS/3T/IEO/project")
 
 opts_chunk$set(cache=TRUE,
                cache.path="cache/file2",
