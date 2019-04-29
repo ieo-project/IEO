@@ -502,5 +502,33 @@ par(mfrow=c(1,1))
 plotMDS(dge.filt3, col = c("red", "blue")[as.integer(dge.filt3$samples$group)], cex = 0.7)
 legend("topleft", c("normal", "tumor"), fill = c("red", "blue"), inset = 0.05, cex = 0.7)
 
-sessionInfo()
+```
+
+## Differential expression
+
+# fold-change plot
+
+```{r, message=FALSE}
+
+dim(se.filt)
+
+logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
+normalExp <- rowMeans(logCPM[, se.filt3$type == "normal"])
+tumorExp <- rowMeans(logCPM[, se.filt3$type == "tumor"])
+
+par(mfrow = c(1, 2))
+plot(normalExp, tumorExp, xlab = "Normal", ylab = "Tumor", pch = ".", cex = 4, las = 1)
+plot((tumorExp + normalExp)/2, tumorExp - normalExp, pch = ".", cex = 4, las = 1)
+```
+# Fold-change significant genes
+
+```{r, message=FALSE}
+log2fc <- tumorExp - normalExp
+ranking <- order(abs(log2fc), decreasing = TRUE)
+fc_genes <- data.frame(Log2FC = round(log2fc[ranking], digits = 3), FC = round(2^log2fc[ranking],
+digits = 3), `1/FC` = round(2^(-log2fc[ranking]), digits = 3), row.names = rowData(se)$symbol[ranking], check.names = FALSE)
+fc_genes <- fc_genes[order(-fc_genes$Log2FC),]
+overexp <- fc_genes[fc_genes$Log2FC > 4,]
+underexp <- fc_genes[fc_genes$Log2FC < -4,]
+head(fc_genes)
 ```

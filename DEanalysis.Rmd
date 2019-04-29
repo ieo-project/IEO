@@ -26,7 +26,7 @@ opts_chunk$set(cache=TRUE,
 
 se <- readRDS("seKIRC.rds")
 #se <- readRDS(file.path("rawCounts", "seKICH.rds"))
-dge <- readRDS(file.path("results", "dge.rds"))
+#dge <- readRDS(file.path("results", "dge.rds"))
 se.filt.unnorm <- readRDS(file.path("results", "se.filt.unnorm.rds"))
 dge.filt.unnorm <- readRDS(file.path("results", "dge.filt.unnorm.rds"))
 se.filt <- readRDS(file.path("results", "se.filt.rds"))
