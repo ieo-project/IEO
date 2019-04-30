@@ -1,0 +1,376 @@
+\documentclass[]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\hypersetup{unicode=true,
+            pdftitle={IEO\_PROJECT},
+            pdfauthor={Javier Sánchez Utgés},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+%%% Use protect on footnotes to avoid problems with footnotes in titles
+\let\rmarkdownfootnote\footnote%
+\def\footnote{\protect\rmarkdownfootnote}
+
+%%% Change title format to be more compact
+\usepackage{titling}
+
+% Create subtitle command for use in maketitle
+\providecommand{\subtitle}[1]{
+  \posttitle{
+    \begin{center}\large#1\end{center}
+    }
+}
+
+\setlength{\droptitle}{-2em}
+
+  \title{IEO\_PROJECT}
+    \pretitle{\vspace{\droptitle}\centering\huge}
+  \posttitle{\par}
+    \author{Javier Sánchez Utgés}
+    \preauthor{\centering\large\emph}
+  \postauthor{\par}
+      \predate{\centering\large\emph}
+  \postdate{\par}
+    \date{30 de abril de 2019}
+
+
+\begin{document}
+\maketitle
+
+\subsection{Analysis of TCGA RNA-seq dataset of kidney renal clear cell
+carcinoma}\label{analysis-of-tcga-rna-seq-dataset-of-kidney-renal-clear-cell-carcinoma}
+
+This is an R Markdown document that will show all the steps of the
+analysis of TCGA RNA-seq dataset of kidney renal clear cell carcinoma.
+
+\subsection{Quality analysis}\label{quality-analysis}
+
+\subsubsection{Data import}\label{data-import}
+
+First, we import the dataset and store it in a
+\texttt{SummarizedExperiment} object, named \texttt{se}. This kind of
+object has genes on its rows and samples on its columns, 20,115 genes
+and 614 samples in our case. Both of these entities have their own
+associated metadata, i.e., gene symbol, lenght and GC content for genes.
+For samples, there are more than 500 more fields, for instance type,
+gender and race.
+
+\begin{verbatim}
+## Warning: package 'SummarizedExperiment' was built under R version 3.4.3
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: GenomicRanges
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'GenomicRanges' was built under R version 3.4.4
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: stats4
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: BiocGenerics
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'BiocGenerics' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: parallel
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'BiocGenerics'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:parallel':
+## 
+##     clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+##     clusterExport, clusterMap, parApply, parCapply, parLapply,
+##     parLapplyLB, parRapply, parSapply, parSapplyLB
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:stats':
+## 
+##     IQR, mad, sd, var, xtabs
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:base':
+## 
+##     anyDuplicated, append, as.data.frame, cbind, colMeans,
+##     colnames, colSums, do.call, duplicated, eval, evalq, Filter,
+##     Find, get, grep, grepl, intersect, is.unsorted, lapply,
+##     lengths, Map, mapply, match, mget, order, paste, pmax,
+##     pmax.int, pmin, pmin.int, Position, rank, rbind, Reduce,
+##     rowMeans, rownames, rowSums, sapply, setdiff, sort, table,
+##     tapply, union, unique, unsplit, which, which.max, which.min
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: S4Vectors
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'S4Vectors' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'S4Vectors'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:base':
+## 
+##     expand.grid
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: IRanges
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'IRanges' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: GenomeInfoDb
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'GenomeInfoDb' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: Biobase
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'Biobase' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## Welcome to Bioconductor
+## 
+##     Vignettes contain introductory material; view with
+##     'browseVignettes()'. To cite Bioconductor, see
+##     'citation("Biobase")', and for packages 'citation("pkgname")'.
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: DelayedArray
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'DelayedArray' was built under R version 3.4.2
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: matrixStats
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'matrixStats' was built under R version 3.4.4
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'matrixStats'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:Biobase':
+## 
+##     anyMissing, rowMedians
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'DelayedArray'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:matrixStats':
+## 
+##     colMaxs, colMins, colRanges, rowMaxs, rowMins, rowRanges
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:base':
+## 
+##     apply
+\end{verbatim}
+
+\begin{verbatim}
+## class: RangedSummarizedExperiment 
+## dim: 20115 614 
+## metadata(5): experimentData annotation cancerTypeCode
+##   cancerTypeDescription objectCreationDate
+## assays(1): counts
+## rownames(20115): 1 2 ... 102724473 103091865
+## rowData names(3): symbol txlen txgc
+## colnames(614): TCGA.3Z.A93Z.01A.11R.A37O.07
+##   TCGA.6D.AA2E.01A.11R.A37O.07 ... TCGA.CZ.5988.11A.01R.1672.07
+##   TCGA.CZ.5989.11A.01R.1672.07
+## colData names(549): type bcr_patient_uuid ...
+##   lymph_nodes_aortic_pos_by_ihc lymph_nodes_aortic_pos_total
+\end{verbatim}
+
+Next, we explore the dimensions of the column data of the object,
+containing the samples data and see that it has 614 rows (samples) and
+549 columns (metadata fields).
+
+\begin{verbatim}
+## [1] 614 549
+\end{verbatim}
+
+\begin{verbatim}
+## DataFrame with 5 rows and 5 columns
+##                                  type                     bcr_patient_uuid
+##                              <factor>                             <factor>
+## TCGA.3Z.A93Z.01A.11R.A37O.07    tumor 2B1DEA0A-6D55-4FDD-9C1C-0D9FBE03BD78
+## TCGA.6D.AA2E.01A.11R.A37O.07    tumor D3B47E53-6F40-4FC8-B5A4-CBE548A770A9
+## TCGA.A3.3306.01A.01R.0864.07    tumor 9fb55e0b-43d8-40a3-8ef2-d198e6290551
+## TCGA.A3.3307.01A.01R.0864.07    tumor 7ac1d6c6-9ade-49af-8794-10b5b96b2b05
+## TCGA.A3.3308.01A.02R.1325.07    tumor 3cbca837-f5a7-4a87-8f02-c59eac232d5a
+##                              bcr_patient_barcode form_completion_date
+##                                         <factor>             <factor>
+## TCGA.3Z.A93Z.01A.11R.A37O.07        TCGA-3Z-A93Z           2014-11-11
+## TCGA.6D.AA2E.01A.11R.A37O.07        TCGA-6D-AA2E            2014-3-17
+## TCGA.A3.3306.01A.01R.0864.07        TCGA-A3-3306            2010-8-23
+## TCGA.A3.3307.01A.01R.0864.07        TCGA-A3-3307            2010-4-13
+## TCGA.A3.3308.01A.02R.1325.07        TCGA-A3-3308            2010-4-12
+##                              prospective_collection
+##                                            <factor>
+## TCGA.3Z.A93Z.01A.11R.A37O.07                    YES
+## TCGA.6D.AA2E.01A.11R.A37O.07                    YES
+## TCGA.A3.3306.01A.01R.0864.07                     NO
+## TCGA.A3.3307.01A.01R.0864.07                     NO
+## TCGA.A3.3308.01A.02R.1325.07                     NO
+\end{verbatim}
+
+\begin{verbatim}
+## DataFrame with 549 rows and 2 columns
+##                                                          labelDescription
+##                                                               <character>
+## type                                           sample type (tumor/normal)
+## bcr_patient_uuid                                         bcr patient uuid
+## bcr_patient_barcode                                   bcr patient barcode
+## form_completion_date                                 form completion date
+## prospective_collection            tissue prospective collection indicator
+## ...                                                                   ...
+## lymph_nodes_pelvic_pos_total                               total pelv lnp
+## lymph_nodes_aortic_examined_count                           total aor lnr
+## lymph_nodes_aortic_pos_by_he                          aln pos light micro
+## lymph_nodes_aortic_pos_by_ihc                                 aln pos ihc
+## lymph_nodes_aortic_pos_total                                total aor-lnp
+##                                         CDEID
+##                                   <character>
+## type                                       NA
+## bcr_patient_uuid                           NA
+## bcr_patient_barcode                   2673794
+## form_completion_date                       NA
+## prospective_collection                3088492
+## ...                                       ...
+## lymph_nodes_pelvic_pos_total          3151828
+## lymph_nodes_aortic_examined_count     3104460
+## lymph_nodes_aortic_pos_by_he          3151832
+## lymph_nodes_aortic_pos_by_ihc         3151831
+## lymph_nodes_aortic_pos_total          3151827
+\end{verbatim}
+
+These metadata consists of two columns of information about the clinical
+variables. One called \texttt{labelDescription} contains a succint
+description of the variable, often not more self-explanatory than the
+variable name itself, and the other called `CDEID' corresponds to the
+so-called \texttt{Common\ Data\ Element\ (CDE)} identifier. This
+identifier can be use in \url{https://cdebrowser.nci.nih.gov} to search
+for further information about the associated clinical variable using the
+\texttt{Advanced\ search} form and the \texttt{Public\ ID} attribute
+search.
+
+We do the same with the gene data and observe the metadata mentioned
+before.
+
+\begin{verbatim}
+## [1] 20115     3
+\end{verbatim}
+
+\begin{verbatim}
+## DataFrame with 20115 rows and 3 columns
+##            symbol     txlen      txgc
+##       <character> <integer> <numeric>
+## 1            A1BG      3322 0.5644190
+## 2             A2M      4844 0.4882329
+## 3            NAT1      2280 0.3942982
+## 4            NAT2      1322 0.3895613
+## 5        SERPINA3      3067 0.5249429
+## ...           ...       ...       ...
+## 20111       POTEB      1706 0.4308324
+## 20112    SNORD124       104 0.4903846
+## 20113   SNORD121B        81 0.4074074
+## 20114      GAGE10       538 0.5055762
+## 20115   BRWD1-IT2      1028 0.5924125
+\end{verbatim}
+
+
+\end{document}

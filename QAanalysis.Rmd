@@ -74,8 +74,8 @@ df <- data.frame(colData(se))
 # example to obtain CDEID
 #which(colnames(colData(se)) == "retrospective_collection")
 
-summary(colData(se)[,which(colnames(colData(se)) == "race")])
-mcols(colData(se), use.names=TRUE)[which(colnames(colData(se)) == "race"),]
+summary(colData(se)[,which(colnames(colData(se)) == "tissue_source_site")])
+mcols(colData(se), use.names=TRUE)[which(colnames(colData(se)) == "tissue_source_site"),]
 ```
 
 
