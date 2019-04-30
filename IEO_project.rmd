@@ -274,25 +274,51 @@ colnames(dge.filt4) <- c(1:112)
 colnames(se.filt4) <- c(1:112)
 tumor_se <- se.filt4[,se.filt4$type == "tumor"]
 tumor_dge <- dge.filt4[,se.filt4$type == "tumor"]
+
 ###GENDER
-batch <- as.integer(factor(se.filt4$gender))
-outcome <- paste(factor(se.filt4$gender), as.character(se.filt4$type), sep="-")
-plotMDS(dge.filt4, col = batch,labels = outcome, cex = 0.7)
-legend("topleft", paste("Batch", sort(unique(batch)), levels(factor(se.filt4$gender))), fill=sort(unique(batch)), inset=0.005)
+se_gender <- se.filt4[,!is.na(se.filt4$gender)]
+dge_gender <- dge.filt4[,!is.na(se.filt4$gender)]
+batch <- as.integer(factor(se_gender$gender))
+outcome <- paste(factor(se_gender$gender), as.character(se_gender$type), sep="-")
+plotMDS(dge_gender, col = batch,labels = outcome, cex = 0.7)
+legend("topleft", paste("Batch", sort(unique(batch)), levels(factor(se_gender$gender))), fill=sort(unique(batch)), inset=0.005)
 
 ###CANCER STAGE
-
 tumor_stage_se <- tumor_se[,!is.na(tumor_se$ajcc_pathologic_tumor_stage)]
 tumor_stage_dge <-tumor_dge[,!is.na(tumor_se$ajcc_pathologic_tumor_stage)]
 batch <- as.integer(factor(tumor_stage_se$ajcc_pathologic_tumor_stage))
 outcome <- paste(factor(tumor_stage_se$ajcc_pathologic_tumor_stage), colnames(tumor_stage_se), sep="-")
 plotMDS(tumor_stage_dge, col = batch,labels = outcome, cex = 0.7)
-legend("topleft", paste("Batch", sort(unique(batch)), levels(factor(tumor_stage_se$ajcc_pathologic_tumor_stage))), fill=sort(unique(batch)), inset=0.005)
+legend("bottomright", sort(unique(batch)), levels(factor(tumor_stage_se$ajcc_pathologic_tumor_stage)), fill=sort(unique(batch)), inset=0.005)
+
+###TUMOR GRADE 
+tumor_grade_se <- tumor_se[,!is.na(tumor_se$tumor_grade)]
+tumor_grade_dge <-tumor_dge[,!is.na(tumor_se$tumor_grade)]
+batch <- as.integer(factor(tumor_grade_se$tumor_grade))
+outcome <- paste(factor(tumor_grade_se$tumor_grade), colnames(tumor_grade_se), sep="-")
+plotMDS(tumor_grade_dge, col = batch,labels = outcome, cex = 0.7)
+legend("bottomright", sort(unique(batch)), levels(factor(tumor_grade_se$tumor_grade)), fill=sort(unique(batch)), inset=0.005)
+
+###CANCER laterality
+tumor_lat_se <- tumor_se[,!is.na(tumor_se$laterality)]
+tumor_late_dge <-tumor_dge[,!is.na(tumor_se$laterality)]
+batch <- as.integer(factor(tumor_lat_se$laterality))
+outcome <- paste(factor(tumor_lat_se$laterality), colnames(tumor_lat_se), sep="-")
+plotMDS(tumor_stage_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topleft", sort(unique(batch)), levels(factor(tumor_lat_se$laterality)), fill=sort(unique(batch)), inset=0.005)
+
+###CANCER status
+tumor_status_se <- tumor_se[,!is.na(tumor_se$vital_status)]
+tumor_status_dge <-tumor_dge[,!is.na(tumor_se$vital_status)]
+batch <- as.integer(factor(tumor_status_se$vital_status))
+outcome <- paste(factor(tumor_status_se$vital_status), colnames(tumor_status_se), sep="-")
+plotMDS(tumor_status_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topleft", sort(unique(batch)), levels(factor(tumor_status_se$vital_status)), fill=sort(unique(batch)), inset=0.005)
 ```
 
 ## 3. Differential expression
 
-```{r}
+```{r Differential expression}
 library(sva)
 mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
 mod0 <- model.matrix(~ 1, colData(se.filt4))
@@ -303,7 +329,7 @@ hist(pv, main="",las=1)
 
 Estimation of surrogate variables
 
-```{r}
+```{r Estimation of surrogate variables}
 sv <- sva(assays(se.filt4)$logCPM, mod, mod0)
 sv$n
 modsv <- cbind(mod, sv$sv)
@@ -311,5 +337,21 @@ mod0sv <- cbind(mod0, sv$sv)
 pvsv <- f.pvalue(assays(se.filt4)$logCPM, modsv, mod0sv)
 sum(p.adjust(pvsv,method="fdr")<0.01)
 hist(pvsv, main="",las=1)
+```
+
+Fold change
+
+```{r Fold change}
+tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
+normalExp <- rowMeans(logCPM[, se.filt4$type == "normal"])
+par(mfrow = c(1, 2))
+plot(normalExp, tumorExp, xlab = "Tumor", ylab = "Normal", pch = ".", cex = 4, las = 1)
+plot((tumorExp + normalExp)/2, tumorExp - normalExp, pch = ".", cex = 4, las = 1)
+
+log2fc <- tumorExp - normalExp
+ranking <- order(abs(log2fc), decreasing = TRUE)
+head(data.frame(Log2FC = round(log2fc[ranking], digits = 3), FC = round(2^log2fc[ranking], 
+    digits = 3), `1/FC` = round(2^(-log2fc[ranking]), digits = 3), row.names = rowData(se.filt4)$symbol[ranking], 
+    check.names = FALSE), n = 10)
 ```
 
