@@ -12,12 +12,7 @@ author:
   affiliation: *id
   email: guillem.palou01@estudiant.upf.edu
 date: "`r format(Sys.time(), '%B %e, %Y')`"
-output: 
-  BiocStyle::html_document:
-    toc: true
-    toc_float: true
-    number_sections: true
-bibliography: bibliography.bib
+output: html_document
 ---
 
 # Analysis of TCGA RNA-seq dataset of kidney renal clear cell carcinoma
@@ -30,11 +25,11 @@ The Cancer Genome Atlas (TCGA) has comprehensively profiled this type of cancer
 in a patient cohort. Here we analyze the expression profiles of those
 patients, accessible in the form of a raw RNA-seq counts produced by
 @natureTCGA using a pipeline based on the R/Bioconductor
-software package `r Biocpkg("Rsubread")`.
+software package `Rsubread`.
 
 This document is written in [R markdown](https://rmarkdown.rstudio.com) and
 should be processed using R and you need to install the packages
-`r CRANpkg("knitr")` and `r CRANpkg("markdown")`.
+`knitr` and `markdown`.
 
 The specific instructions to generate the final HTML report are written in a
 [Makefile](https://en.wikipedia.org/wiki/Makefile). To run it you just need to type
@@ -56,18 +51,18 @@ source filenames from where they were created.
 
 Before starting, we need to import all the libraries that are going to be used in this analysis.
 
-```{r setp, include=FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libraries, include=FALSE}
 library(knitr)
 library(SummarizedExperiment)
 library(edgeR)
 library(geneplotter)
-
-opts_chunk$set(cache=TRUE,
-               cache.path="cache/file2",
-               cache.extra=R.version.string,
-               autodep=TRUE,
-               fig.align="center",
-               comment="")
+library(sva)
+library(ggplot2)
 ```
 
 ### 2.1. Data import
@@ -121,10 +116,10 @@ assays(se)$logCPM[1:5, 1:5]
 
 We then examine the sequencing depth in terms of total number of sequence read counts mapped to the genome per sample.
 
-```{r Sequencing depth}
+```{r Sequencing depth, dpi=200, fig.width=14, fig.height=8}
 ord <- order(dge$sample$lib.size)
 summary(dge$sample$lib.size/1e+06)
-barplot(dge$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[se$gender[ord]], border=NA, space=c(0,0))
+barplot(dge$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[se$gender[ord]], space=c(0,0))
 legend("topleft", c("female", "male", "NA"), fill = c("red", "blue", "white"), inset = 0.02)
 abline(h=(sum(colSums(assays(se)$counts))/1e6)/ncol(se))
 ```
@@ -149,7 +144,7 @@ saveRDS(dge.filt, file.path("results", "dge.filt.unnorm.rds"))
 
 We look at the distribution of expression values per sample in terms of logarithmic CPM units using [geneplotter](http://bioconductor.org/packages/geneplotter) R/Bioconductor package.
 
-```{r Distribution of expression levels among samples}
+```{r Distribution of expression levels among samples, dpi=200, fig.width=7, fig.height=4}
 assays(se.filt)$logCPM <- cpm(dge.filt, log=TRUE, prior.count=0.5)
 par(mfrow=c(1, 2))
 multidensity(as.list(as.data.frame(assays(se.filt[, se.filt$type == "tumor"])$logCPM)),
@@ -208,7 +203,7 @@ saveRDS(dge.filt2, file.path("results", "dge.filt2.unnorm.rds"))
 
 We calculate now the normalization factors on the filtered expression data set and compare the corresponding plot with the unnormalized expression data set.
 
-```{r Between-sample normalization}
+```{r Between-sample normalization, dpi=200, dpi=200, fig.width=7, fig.height=4}
 #Unnormalized first filtered data set
 par(mfrow = c(1, 2))
 dge.filt$samples$group <- se.filt$type
@@ -227,7 +222,7 @@ table(dge.filt2$samples$group)
 
 Using the TCGA barcode from the samples we can asses whether the plate idenfitier, tissue source site, portion analyte, sample vial and center can work as surrogates for batch effect indicators.
 
-```{r Batch effect }
+```{r Batch effect 2}
 tss <- substr(colnames(se.filt2), 6, 7)
 center <- substr(colnames(se.filt2), 27, 28)
 plate <- substr(colnames(se.filt2), 22, 25)
@@ -275,7 +270,7 @@ After the third filtering, the sample distribution is much better, thus we have 
 
 We perform a hierarchical clustering of the samples indicating the batch to which each of them belongs to, to check if there is still some batch that might be confounding the outcome of interest.
 
-```{r Hierarchical clustering according to batch effect, dpi=200, fig.width=12, fig.height=4}
+```{r Hierarchical clustering according to batch effect, dpi=200, fig.width=14, fig.height=8}
 logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
 d <- as.dist(1-cor(logCPM, method="spearman"))
 sampleClustering <- hclust(d)
@@ -353,9 +348,7 @@ dim(dge.filt4)
 
 Now we make use of multidimensional scaling plots to check, first if there is a batch effect by gender?, and second other potential variables that might be a new outcome of interest in tumor samples: cancer stage, tumor grade, cancer laterality, and vital status
 
-```{r}
-#colnames(dge.filt4) <- substr(colnames(dge.filt4), 9, 12)
-#colnames(se.filt4) <- substr(colnames(se.filt4), 9, 12)
+```{r MDS plots, dpi = 200, fig.width=14, fig.height=8}
 tumor_se <- se.filt4[,se.filt4$type == "tumor"]
 tumor_dge <- dge.filt4[,se.filt4$type == "tumor"]
 
@@ -405,7 +398,7 @@ The first plot shows that there is no batch effect produced by gender because th
 ## 3. Differential expression
 
 ```{r Differential expression}
-library(sva)
+
 mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
 mod0 <- model.matrix(~ 1, colData(se.filt4))
 pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
@@ -413,7 +406,7 @@ sum(p.adjust(pv, method="fdr")< 0.01)
 hist(pv, main="",las=1)
 ```
 
-Estimation of surrogate variables
+### 3.1. Estimation of surrogate variables
 
 ```{r Estimation of surrogate variables}
 sv <- sva(assays(se.filt4)$logCPM, mod, mod0)
@@ -425,12 +418,12 @@ sum(p.adjust(pvsv,method="fdr")<0.01)
 hist(pvsv, main="",las=1)
 ```
 
-Fold change
+### 3.2. Fold change
 
-```{r Fold change}
+```{r Fold change, dpi = 200, fig.width= 14, fig.height= 4}
 logCPM <- cpm(dge.filt4, log=TRUE, prior.count=3)
 tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
-row.names(tumorExp) <- rowData(se.filt4)$symbol
+normalExp <- rowMeans(logCPM[, se.filt4$type == "normal"])
 par(mfrow = c(1, 2))
 plot(normalExp, tumorExp, xlab = "Tumor", ylab = "Normal", pch = ".", cex = 4, las = 1)
 plot((tumorExp + normalExp)/2, tumorExp - normalExp, pch = ".", cex = 4, las = 1)
@@ -446,7 +439,6 @@ DEG <- data.frame(
   `p-value` = as.numeric(pvsv), row.names = rowData(se.filt4)$symbol[ranking],
   check.names = FALSE)
 
-library(ggplot2)
 S <- DEG$Log2FC > 2 | DEG$Log2FC < -2
 SDEG <- DEG[S,]
 ggplot(data=SDEG) +
