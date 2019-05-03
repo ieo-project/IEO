@@ -1,7 +1,7 @@
 ---
 title: "Analysis of a TCGA RNA-seq data set on Kidney Clear Cell Carcinoma"
 author:
-- name: J. Utgés
+- name: J. Sanchez
   affiliation:
   - &id Master Programme on Bioinformatics for Health Sciences, Universitat Pompeu Fabra, Barcelona, Catalonia
   email: javier.sanchez14@estudiant.upf.edu
@@ -20,7 +20,9 @@ output:
 bibliography: bibliography.bib
 ---
 
-# Introduction
+# Analysis of TCGA RNA-seq dataset of kidney renal clear cell carcinoma
+
+## 1. Introduction
 
 Kidney Clear Cell Carcinoma or clear cell renal cell carcinoma (ccRCC), is a chemotherapy-resistant disease that can be distinguished of other cancer because affected cells show a clear cytoplasm, are surrounded by a distinct cell membrane and contain round and uniform nuclei. Inherited predisposition to ccRCC has been shown to arise from genes involved
 in regulating cellular metabolism, making ccRCC a model for the role of an oncologic-metabolic shift.
@@ -32,12 +34,7 @@ software package `r Biocpkg("Rsubread")`.
 
 This document is written in [R markdown](https://rmarkdown.rstudio.com) and
 should be processed using R and you need to install the packages
-`r CRANpkg("knitr")` and `r CRANpkg("markdown")`. Moreover, it using the official
-style for Bioconductor vignettes facilitated by the Bioconductor package
-`r Biocpkg("BiocStyle")`. Please consult that package documentation, and particularly
-the [vignette](http://bioconductor.org/packages/release/bioc/vignettes/BiocStyle/inst/doc/AuthoringRmdVignettes.html)
-on "Authoring R Markdown vignettes", for full details on how to elaborate this
-kind of documents.
+`r CRANpkg("knitr")` and `r CRANpkg("markdown")`.
 
 The specific instructions to generate the final HTML report are written in a
 [Makefile](https://en.wikipedia.org/wiki/Makefile). To run it you just need to type
@@ -55,22 +52,22 @@ The directory `results` will contain resulting files produced during the analysi
 however, figures are going to end by default directories associated with the
 source filenames from where they were created.
 
-# Analysis of TCGA RNA-seq dataset of kidney renal clear cell carcinoma
-
-This is an R Markdown document that will show all the steps of the analysis of TCGA RNA-seq dataset of kidney renal clear cell carcinoma.
-
-## 1. Introduction
-
-
 ## 2. Quality analysis
 
-Importing all necessary libraries
+Before starting, we need to import all the libraries that are going to be used in this analysis.
 
-```{r library import, include=FALSE}
+```{r setp, include=FALSE}
+library(knitr)
 library(SummarizedExperiment)
 library(edgeR)
 library(geneplotter)
 
+opts_chunk$set(cache=TRUE,
+               cache.path="cache/file2",
+               cache.extra=R.version.string,
+               autodep=TRUE,
+               fig.align="center",
+               comment="")
 ```
 
 ### 2.1. Data import
@@ -104,13 +101,10 @@ dim(rowData(se))
 rowData(se)
 ```
 
-To perform quality assessment and normalization we need first to load the
-[edgeR](http://bioconductor.org/packages/edgeR) R/Bioconductor package and
-create a `DGEList` object.
+To perform quality assessment and normalization we use the [edgeR](http://bioconductor.org/packages/edgeR) R/Bioconductor package and create a `DGEList` objec, which we are going to save in the file `dge.rds`.
 
-```{r DGE object creation, echo = FALSE}
+```{r DGE object creation, include=FALSE}
 dge <- DGEList(counts=assays(se)$counts, genes=mcols(se))
-# Saving the DGEList object into a "results" folder
 saveRDS(dge, file.path("results", "dge.rds"))
 ```
 
@@ -129,10 +123,10 @@ We then examine the sequencing depth in terms of total number of sequence read c
 
 ```{r Sequencing depth}
 ord <- order(dge$sample$lib.size)
+summary(dge$sample$lib.size/1e+06)
 barplot(dge$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[se$gender[ord]], border=NA, space=c(0,0))
 legend("topleft", c("female", "male", "NA"), fill = c("red", "blue", "white"), inset = 0.02)
 abline(h=(sum(colSums(assays(se)$counts))/1e6)/ncol(se))
-summary(dge$sample$lib.size/1e+06)
 ```
 
 There is a good distribution of male and female samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 46 million reads. We apply a threshold of 21M to discard low sequencing depth samples. We use this specific value, because we can observe at the plot that there is a change in the distribution peaks (a jump from 20.9M to 24M). After the filtering, the number of samples is reduced from 614 to 596.
@@ -179,7 +173,7 @@ h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), mai
 
 RNA-seq expression profiles from lowly-expressed genes can lead to artifacts in downstream differential
 expression analyses. For this reason, we remove them following this criteria:
--Filter out genes with fewer than a given number of samples meeting a minimum CPM (or log 2 CPM) cutoff.
+- Filter out genes with fewer than a given number of samples meeting a minimum CPM (or log 2 CPM) cutoff.
 In our case, the minimum CPM is 0.6 in at least 72 samples (normal group).
 
 ```{r}
@@ -281,17 +275,18 @@ After the third filtering, the sample distribution is much better, thus we have 
 
 We perform a hierarchical clustering of the samples indicating the batch to which each of them belongs to, to check if there is still some batch that might be confounding the outcome of interest.
 
-```{r Hierarchical clustering according to batch effect}
+```{r Hierarchical clustering according to batch effect, dpi=200, fig.width=12, fig.height=4}
 logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
 d <- as.dist(1-cor(logCPM, method="spearman"))
 sampleClustering <- hclust(d)
-
+#windows.options(width=20,height=10)
 ## Batch: Tissue Source Site (TSS)
 batch <- as.integer(factor(tss2))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
 names(batch) <- colnames(se.filt3)
 outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
 names(outcome) <- colnames(se.filt3)
+#par(mfrow=c(1,1),mar=c(3,2,2,2))
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
                                  if (is.leaf(x)) {
@@ -340,7 +335,7 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(samplevial2
 
 ```
 
-All three dendograms seems to confirm the absence of batch effect. Nevertheless, there are 3 suspicious samples: two tumor samples (5546, 5591) clustered with the normal samples, and one normal sample (5591) clustered with the tumor samples. As for the 5546 sample, we do not know what exactly happened (it might be correct because it's an outgroup from the normal samples, but we are not sure), but the second and third samples are from the same individual, which makes us think there might have been some labelling error. Thus, the normal sample is in fact tumor and viceversa. Moreover, the 4698-tumor sample is an outlier that may distorsionate multidimensional plots. For these reasons and to avoid further potential problems, we have decided to discard these four samples (fourth filtering). Now the number of left samples is 112 (55 normal, 57 tumor).
+All three dendorgrams seem to confirm the absence of batch effect. Nevertheless, there are 3 suspicious samples: two tumor samples (5546, 5591) clustered with the normal samples, and one normal sample (5591) clustered with the tumor samples. As for the 5546 sample, we do not know what exactly happened (it might be correct because it's an outgroup from the normal samples, but we are not sure), but the second and third samples are from the same individual, which makes us think there might have been some labelling error. Thus, the normal sample is in fact tumor and viceversa. Moreover, the 4698-tumor sample is an outlier that may distorsionate multidimensional plots. For these reasons and to avoid further potential problems, we have decided to discard these four samples (fourth filtering). Now the number of left samples is 112 (55 normal, 57 tumor).
 
 ```{r}
 se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]
