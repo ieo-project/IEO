@@ -126,7 +126,7 @@ legend("topleft", c("female", "male", "NA"), fill = c("red", "blue", "white"), i
 abline(h=(sum(colSums(assays(se)$counts))/1e6)/ncol(se))
 ```
 
-Figure \@ref(fig:seqDepth) from above shows the sequencing depth per sample, also known as library sizes, in increasing order. There is a good distribution of male and female samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 46 million reads. We apply a threshold of 21M to discard low sequencing depth samples. We use this specific value, because we can observe at the plot that there is a change in the distribution peaks (a jump from 20.9M to 24M). After the filtering, the number of samples is reduced from 614 to 596.
+Figure \@ref(fig:seqDepth) shows the sequencing depth per sample, also known as library size, in increasing order. There is a good distribution of male and female samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 45 million reads. We apply a threshold of 21M to discard low sequencing depth samples. We use this specific value, because we can observe at the plot that there is a change in the distribution peaks (a jump from 20.9M to 24M). After the filtering, the number of samples is reduced from 614 to 596.
 
 ```{r exp_filt_samples}
 cpm_cutoff <- 21
@@ -156,7 +156,7 @@ multidensity(as.list(as.data.frame(assays(se.filt[, se.filt$type == "normal"])$l
              xlab="log 2 CPM", legend=NULL, main="normal", las=1)
 ```
 
-The figure \@ref(fig:distRawExp) from above, shows that the normal samples have a good CPM distribution, but some of the tumor samples seem to have a distinct RNA composition. Let's see if this can be fixed later on by filtering.
+Figure \@ref(fig:distRawExp) shows that the normal samples have a good CPM distribution, but some of the tumor samples seem to have a distinct RNA composition. Let's see if this can be fixed later on by filtering.
 
 ## Distribution and filtering of expression levels among genes (second filtering)
 
@@ -170,8 +170,10 @@ h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), mai
 ```
 
 RNA-seq expression profiles from lowly-expressed genes can lead to artifacts in downstream differential expression analyses. For this reason, we remove them following this criteria:
-- Filter out genes with fewer than a given number of samples meeting a minimum CPM (or log 2 CPM) cutoff.
-In our case, the minimum CPM is 0.6 in at least 72 samples (normal group).
+
+- Filter out genes with fewer than a given number of samples meeting a minimu expression (logCPM) cut-off.
+
+In our case, the minimum CPM is 0.6 in at least 72 samples, which is the sample size of the control group.
 
 ```{r exprDistFilt, fig.align = "center", fig.cap="Distribution of average expression level per gene, showing the filtered genes in red"}
 # CPM cutoff
@@ -192,7 +194,7 @@ lines(h$mids, table(x), type = "h", lwd = 10, lend = 1, col = "darkred")
 legend("topleft", c("All genes", "Filtered genes"), fill = c("grey", "darkred"))
 ```
 
-After the filtering, we remove most of the lowly-expressed genes, but as we can observe in Figure \@ref(fig:exprDistFilt) still some of them are not removed (negative log2 CPM). These are lowly-expressed genes that only are expressed in normal samples (thus follows the criteria). Because they are not expressed in tumor samples, the average CPM is negative. However, genes that are expressed (although with low value) in normal samples but not in tumor samples might be of interest.
+After the filtering, we remove most of the lowly-expressed genes, but as we can observe in Figure \@ref(fig:exprDistFilt) still some of them are not removed (negative log2 CPM). These are lowly-expressed genes that only are expressed in normal samples (thus follows the criteria). Because they are not expressed in tumor samples, the average CPM is negative. However, genes that are expressed, although not very significantly, in normal samples but not in tumor onees might be of interest.
 
 We store the un-normalized versions of the data filtered by gene expression (cutoff of 0.6 CPM expressed in at least 72 samples).
 
@@ -220,8 +222,10 @@ abline(h = 0, col = "blue", lwd = 2)
 table(dge.filt2$samples$group)
 ```
 
-After the normalization on the filtered expression data we correct two previous artifacts: 
+After the normalization on the filtered expression data we correct two previous artifacts:
+
 1) A majority of genes seem to be upregulated under a condition where we do not expect it.
+
 2) Large fold changes tend to occur at low expression levels (orange color in the left plot), because ratios between low numbers may easy lead to large fold-changes.
 
 ## Batch Identification (third filtering)
@@ -276,7 +280,7 @@ After the third filtering, the sample distribution is much better, thus we have 
 
 We perform a hierarchical clustering of the samples indicating the batch to which each of them belongs to, to check if there is still some batch that might be confounding the outcome of interest.
 
-```{r hiercClust1, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering according to the batch effect of Tissue Source Site (TSS)"}
+```{r hiercClust1, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Tissue Source Site (TSS)"}
 logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
 d <- as.dist(1-cor(logCPM, method="spearman"))
 sampleClustering <- hclust(d)
@@ -299,7 +303,7 @@ plot(sampleDendrogram, main="Hierarchical clustering of samples")
 legend("topright", paste("Batch", sort(unique(batch)), levels(factor(tss2))), fill=sort(unique(batch)))
 ```
 
-```{r hiercClust2, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering according to the batch effect of Plate"}
+```{r hiercClust2, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Plate"}
 ## Batch: Plate
 batch <- as.integer(factor(plate2))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
@@ -318,7 +322,7 @@ plot(sampleDendrogram, main="Hierarchical clustering of samples")
 legend("topright", paste("Batch", sort(unique(batch)), levels(factor(plate2))), fill=sort(unique(batch)))
 ```
 
-```{r hiercClust3, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering according to the batch effect of Sample Vial"}
+```{r hiercClust3, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Sample Vial"}
 ## Batch: Sample Vial
 batch <- as.integer(factor(samplevial2))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
@@ -337,7 +341,7 @@ plot(sampleDendrogram, main="Hierarchical clustering of samples")
 legend("topright", paste("Batch", sort(unique(batch)), levels(factor(samplevial2))), fill=sort(unique(batch)))
 ```
 
-All three dendograms (Figures \@ref(fig:hiercClust1), \@ref(fig:hiercClust2) and \@ref(fig:hiercClust3)) seem to confirm the absence of batch effect. Nevertheless, there are 3 suspicious samples: two tumor samples (5546, 5591) clustered with the normal samples, and one normal sample (5591) clustered with the tumor samples. As for the 5546 sample, we do not know what exactly happened (it might be correct because it's an outgroup from the normal samples, but we are not sure), but the second and third samples are from the same individual, which makes us think there might have been some labelling error. Thus, the normal sample is in fact tumor and viceversa. Moreover, the 4698-tumor sample is an outlier that may distorsionate multidimensional plots. For these reasons and to avoid further potential problems, we have decided to discard these four samples (fourth filtering). Now the number of left samples is 112 (55 normal, 57 tumor).
+All three dendograms (Figures \@ref(fig:hiercClust1), \@ref(fig:hiercClust2) and \@ref(fig:hiercClust3)) seem to confirm the absence of any batch effect. Nevertheless, there are 3 suspicious samples: two tumor samples (5546, 5591) clustered with the normal samples, and one normal sample (5591) clustered with the tumor samples. As for the 5546 sample, we do not know what is it that exactly happened, (it might be correct because it's an outgroup from the normal samples, but we are not sure).The two 5591 samples, however, come from the same individual, which makes us consider the possibility of a label swap between the two samples. Thus, the 5591 normal sample might be in fact tumorous and viceversa. Moreover, the 4698-tumor sample is an outlier that may distort multidimensional plots. For these reasons and to avoid further potential problems, we have decided to discard these four samples (fourth filtering). Now the number of left samples is 112 (55 normal, 57 tumor).
 
 ```{r hiercClustFilt}
 se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]
@@ -408,7 +412,7 @@ plotMDS(tumor_status_dge, col = batch,labels = outcome, cex = 0.7)
 legend("topright", sort(unique(batch)), levels(factor(tumor_status_se$vital_status)), fill=sort(unique(batch)), inset=0.005)
 ```
 
-The first plot (figure \@ref(fig:MDSPlot1)) shows that there is no batch effect produced by gender because there is an equal distribution of male and female samples in the three clusters. The rest of the plots (figures \@ref(fig:MDSPlot2), \@ref(fig:MDSPlot3), \@ref(fig:MDSPlot4), \@ref(fig:MDSPlot5)) do not show any cluster by the new outcomes of interest in the tumor samples, rejecting the alternative hypothesis of significant differences among the groups in the four variables (although it should be tested statistically to confirm it).
+The first plot (figure \@ref(fig:MDSPlot1)) shows that there is no correlation between the gender and the logarithm of the fold change for the genes among the samples, which clusters them according to the outcome of interest (tumor or normal), for males and females are uniformly distributed among the two groups, considereing that there are more males than females.The rest of the plots (figures \@ref(fig:MDSPlot2), \@ref(fig:MDSPlot3), \@ref(fig:MDSPlot4), \@ref(fig:MDSPlot5)) do not show any cluster by the new outcomes of interest in the tumor samples, rejecting the alternative hypothesis of significant differences among the groups in the four variables (although it should be statistically tested in order to properly confirm it).
 
 # Differential expression
 
@@ -445,39 +449,7 @@ hist(pvsv, main="",las=1)
 ```
 
 We have increased the number of changing genes to 12031. Figure \@ref(fig:diffExpAdj) from above shows the distribution of the resulting p-values.
-
-## Fold change
-
-```{r FC, fig.align="center", dpi = 200, fig.width= 14, fig.height= 6}
-logCPM <- cpm(dge.filt4, log=TRUE, prior.count=3)
-tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
-normalExp <- rowMeans(logCPM[, se.filt4$type == "normal"])
-par(mfrow = c(1, 2))
-plot(normalExp, tumorExp, xlab = "Tumor", ylab = "Normal", pch = ".", cex = 4, las = 1)
-plot((tumorExp + normalExp)/2, tumorExp - normalExp, pch = ".", cex = 4, las = 1)
-
-log2fc <- tumorExp - normalExp
-ranking <- order(abs(log2fc), decreasing = TRUE)
-
-DEG <- data.frame(
-  Log2FC = round(log2fc[ranking], digits = 3),
-  FC = round(2^log2fc[ranking], digits = 3),
-  `1/FC` = round(2^(-log2fc[ranking]), digits = 3),
-  logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)),
-  `p-value` = as.numeric(pvsv), row.names = rowData(se.filt4)$symbol[ranking],
-  check.names = FALSE)
-
-S <- DEG$Log2FC > 2 | DEG$Log2FC < -2
-SDEG <- DEG[S,]
-ggplot(data=SDEG) +
-geom_point(aes(x=Log2FC,y=-log(`p-value`),color=logCPM)) +
-scale_colour_gradientn(colours=c("#0000FF" ,"#FF0000" ))
-
-OEG <- DEG[DEG$Log2FC > 4,]
-UEG <- DEG[DEG$Log2FC < -4,]
-ranking_over <- order(OEG$Log2FC, decreasing = TRUE)
-ranking_under <- order(UEG$Log2FC, decreasing = FALSE)
-OEG <- OEG[ranking_over,]
-UEG <- UEG[ranking_under,]
+```{r sessioninfo}
+sessionInfo()
 ```
 
