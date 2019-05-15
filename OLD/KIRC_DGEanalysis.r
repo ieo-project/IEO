@@ -65,6 +65,11 @@ sv <- sva(assays(se.filt4)$logCPM, mod, mod0)
 modsv <- cbind(mod, sv$sv)
 mod0sv <- cbind(mod0, sv$sv)
 pvsv <- f.pvalue(assays(se.filt4)$logCPM, modsv, mod0sv)
+colnames(modsv) <- c(colnames(modsv)[1:9], paste0("SV", 1:sv$n.sv))
+
+
+
+
 #DEGA
 logCPM <- cpm(dge.filt4, log=TRUE, prior.count=3)
 tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
@@ -93,7 +98,7 @@ OEG <- SDEG2[SDEG2$Log2FC > 4,]
 UEG <- SDEG2[SDEG2$Log2FC < -4,]
 ################################################################################3
 mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
-fit <- lmFit(assays(se.filt4)$logCPM,mod2)
+fit <- lmFit(assays(se.filt4)$logCPM,modsv)
 fit <- eBayes(fit)
 res <- decideTests(fit)
 summary(res)
@@ -113,7 +118,7 @@ tt.filt <- tt[abs(tt$logFC)>3,]
 tt.filt <- tt.filt[tt.filt$P.Value < 1e-5,]
 head(tt)
 
-ggplot(data=tt) +
+ggplot(data=tt.filt) +
   geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
   scale_colour_gradientn(colours=c("#000000" ,"#FF0000" )) +
   geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
@@ -121,3 +126,6 @@ ggplot(data=tt) +
              color = "black", size=1)+
   geom_vline(xintercept = -3, linetype="dashed", 
              color = "black", size=1)
+
+over <- tt.filt[tt.filt$logFC > 3,]
+under <- tt.filt[tt.filt$logFC < -3,]
