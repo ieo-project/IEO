@@ -457,6 +457,82 @@ hist(pvsv, main="",las=1)
 ```
 
 We have increased the number of changing genes to 12031. Figure \@ref(fig:diffExpAdj) from above shows the distribution of the resulting p-values.
+
+```{r LIMMA}
+mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
+fit <- lmFit(assays(se.filt4)$logCPM,mod2)
+fit <- eBayes(fit)
+res <- decideTests(fit)
+summary(res)
+FDRcutoff <- 0.05
+res <- decideTests(fit, p.value = FDRcutoff)
+summary(res)
+tt <- topTable(fit, coef = 2, n = Inf)
+head(tt)
+genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,
+1], stringsAsFactors = FALSE, logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)))
+
+fit$genes <- genesmd
+fit$logCPM <- data.frame(logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)), stringsAsFactors = FALSE)
+
+tt <- topTable(fit, coef = 2, n = Inf)
+tt.filt <- tt[abs(tt$logFC)>3,]
+tt.filt <- tt.filt[tt.filt$P.Value < 1e-5,]
+head(tt)
+
+ggplot(data=tt) +
+geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
+scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
+geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
+geom_vline(xintercept = 3, linetype="dashed", 
+                color = "black", size=1)+
+  geom_vline(xintercept = -3, linetype="dashed", 
+                color = "black", size=1)
+
+sel <- which(tt$logFC<=-3) # or whatever you want to use
+points(tt[sel,"logFC"], -log(tt[sel,"P.value"]),col="red")
+sel <- which(gene_list$logFD>log(2)) # or whatever you want to use
+points(gene_list[sel,"logFC"], -log10(gene_list[sel,"P.value"]),col="red")
+
+```
+
+
+
+```{r}
+logCPM <- cpm(dge.filt4, log=TRUE, prior.count=3)
+tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
+normalExp <- rowMeans(logCPM[, se.filt4$type == "normal"])
+par(mfrow = c(1, 2))
+plot(normalExp, tumorExp, xlab = "Tumor", ylab = "Normal", pch = ".", cex = 4, las = 1)
+plot((tumorExp + normalExp)/2, tumorExp - normalExp, pch = ".", cex = 4, las = 1)
+
+log2fc <- tumorExp - normalExp
+ranking <- order(abs(log2fc), decreasing = TRUE)
+
+DEG <- data.frame(
+  Log2FC = round(log2fc[ranking], digits = 3),
+  FC = round(2^log2fc[ranking], digits = 3),
+  `1/FC` = round(2^(-log2fc[ranking]), digits = 3),
+  logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)),
+  `p-value` = as.numeric(pvsv), row.names = rowData(se.filt4)$symbol[ranking],
+  check.names = FALSE)
+DEG$BonfCutoff <- rep(0.05/nrow(DEG), nrow(DEG))
+DEG$BonfPvalue <- p.adjust(DEG$`p-value`, method = "bonferroni")
+DEG$FDRcutoff <- (1:nrow(DEG) * 0.05)/nrow(DEG)
+DEG$FDRpvalue <- p.adjust(DEG$`p-value`, method = "fdr")
+DEG
+plot(DEG$Log2FC, -log10(DEG$`p-value`), pch=".", cex=3, xlab="Log fold-change", ylab="Raw p-value", las=1)
+SDEG <- DEG[DEG$FDRpvalue < 1e-4,]
+plot(SDEG$Log2FC, -log10(SDEG$FDRpvalue), pch=".", cex=3, xlab="Log fold-change", ylab="Raw p-value", las=1)
+SDEG2 <- SDEG[abs(SDEG$Log2FC) > 4 ,]
+plot(SDEG2$Log2FC, -log10(SDEG2$FDRpvalue), pch=".", cex=3, xlab="Log fold-change", ylab="Raw p-value", las=1)
+abline(h=-log10(max(DEG$`p-value`[SDEG$FDRpvalue <= 0.05])), lty=2)
+OEG <- SDEG2[SDEG2$Log2FC > 4,]
+UEG <- SDEG2[SDEG2$Log2FC < -4,]
+```
+
+
+
 ```{r sessioninfo}
 sessionInfo()
 ```
