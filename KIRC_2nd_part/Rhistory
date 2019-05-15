@@ -1,0 +1,18 @@
+knitr::opts_chunk$set(echo = TRUE)
+se <- readRDS(file.path("input", "seKIRC.rds"))
+se
+knitr::opts_chunk$set(echo = TRUE)
+se <- readRDS("seKIRC.rds")
+se
+cat(readLines("QAanalysis.knit.md"), sep="\n")
+cat(readLines("QAanalysis.knit.md"), sep="\n")
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+se <- readRDS(file.path("input","seKIRC.rds"))
+se <- readRDS(file.path("input","seKIRC.rds"))
+se
+file.path("input","seKIRC.rds")
+se <- readRDS(file.path("input","seKIRC.rds"))
+se
+unlink('index_cache', recursive = TRUE)
+getwd()
+BiocManager::install("BiocStyle")
