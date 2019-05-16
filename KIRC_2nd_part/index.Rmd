@@ -106,21 +106,10 @@ dim(rowData(se))
 rowData(se)
 ```
 
-PAIRED DATAAAAAAAAAAA
-
-```{r}
-normal_IDs <- substr(colnames(se[,se$type=="normal"]),1,12)
-str(normal_IDs)
-paired_mask <- substr(colnames(se),1,12) %in% normal_IDs
-table(paired_mask)
-paired_se <- se[,paired_mask]
-colData(paired_se)[1:5,1:5]
-```
-
 To perform quality assessment and normalization we use the [edgeR](http://bioconductor.org/packages/edgeR) R/Bioconductor package and create a `DGEList` objec, which we are going to save in the file `dge.rds`.
 
 ```{r DGE, include=TRUE}
-dge <- DGEList(counts=assays(paired_se)$counts, genes=mcols(paired_se))
+dge <- DGEList(counts=assays(se)$counts, genes=mcols(se))
 saveRDS(dge, file.path("results", "dge.rds"))
 ```
 
@@ -129,13 +118,37 @@ Now we calculate $\log_2$ CPM values of expression and put them as an additional
 assay element to ease their manipulation.
 
 ```{r CPM}
-assays(paired_se)$logCPM <- cpm(dge, log=TRUE, prior.count=0.5)
-assays(paired_se)$logCPM[1:5, 1:5]
+assays(se)$logCPM <- cpm(dge, log=TRUE, prior.count=0.5)
+assays(se)$logCPM[1:5, 1:5]
 ```
 
 ## Distribution and filtering of sequencing depth (first filtering)
 
 We then examine the sequencing depth in terms of total number of sequence read counts mapped to the genome per sample.
+
+```{r exp_filt_samples}
+cpm_cutoff <- 20
+mask <- colSums(assays(se)$counts)/1e6 > cpm_cutoff
+se.filt <- se[, mask]
+dge.filt <- dge[, mask]
+dim(se.filt)
+```
+
+PAIRED DATAAAAAAAAAAA
+
+```{r}
+normal_IDs <- substr(colnames(se.filt[,se.filt$type=="normal"]),1,12)
+tumor_IDs <- substr(colnames(se.filt[,se.filt$type=="tumor"]),1,12)
+IDs <- substr(colnames(se.filt),1,12)
+tab1 <- table(IDs)
+paired_mask <- IDs %in% normal_IDs & IDs %in% tumor_IDs
+table(paired_mask)
+paired_se <- se.filt[,paired_mask]
+dge <- dge.filt[, paired_mask]
+colData(paired_se)[1:5,1:5]
+```
+
+
 
 ```{r seqDepth, dpi=200, fig.width=14, fig.height=8, fig.align = "center", fig.cap="Library sizes in increasing order"}
 ord <- order(dge$sample$lib.size)
@@ -146,14 +159,6 @@ abline(h=(sum(colSums(assays(paired_se)$counts))/1e6)/ncol(paired_se))
 ```
 
 Figure \@ref(fig:seqDepth) shows the sequencing depth per sample, also known as library size, in increasing order. There is a good distribution of male and female samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 45 million reads. We apply a threshold of 21M to discard low sequencing depth samples. We use this specific value, because we can observe at the plot that there is a change in the distribution peaks (a jump from 20.9M to 24M). After the filtering, the number of samples is reduced from 614 to 596.
-
-```{r exp_filt_samples}
-cpm_cutoff <- 21
-mask <- colSums(assays(paired_se)$counts)/1e6 > cpm_cutoff
-se.filt <- paired_se[, mask]
-dge.filt <- dge[, mask]
-dim(se.filt)
-```
 
 We store un-normalized versions of the data filtered by sample depth (cutoff of 21 CPM).
 
@@ -272,12 +277,13 @@ A simple glance is enough to see that the sample distribution is not correctly p
 ```{r batchEffectFilt }
 
 ## Filtering by batch effect indicators
-NO HAY QUE ELIMINAR SAMPLES --> PRIMERO MIRAMOS SI HAY BATCH EFFECT EN CADA VARIABLE Y SI LO HAY PUES CORREGIMOS POR ESA VARIABLE PERO NO ELIMINAMOS SAMPLES!
-tss_list <- c("A3","B0","B2","B8","CW","CZ")
+#NO HAY QUE ELIMINAR SAMPLES --> PRIMERO MIRAMOS SI HAY BATCH EFFECT EN CADA VARIABLE Y SI LO HAY PUES CORREGIMOS POR ESA VARIABLE PERO NO ELIMINAMOS SAMPLES!
+#tss_list <- c("A3","B0","B2","B8","CW","CZ")
 plate_list <- c(1503,1541,1672)
 samplevial_list <- c("01A","11A")
-portion <- "01R"
-the_mask <- (substr(colnames(dge.filt),6,7) %in% tss_list & substr(colnames(dge.filt),22,25) %in% plate_list & substr(colnames(dge.filt),18,20) == portion & substr(colnames(dge.filt),14,16) %in% samplevial_list)
+#portion <- "01R"
+the_mask <-  substr(colnames(dge.filt),22,25) %in% plate_list& substr(colnames(dge.filt),14,16) %in% samplevial_list
+
 se.filt3 <- se.filt2[,the_mask]
 dge.filt3 <- dge.filt2[,the_mask]
 dim(se.filt3)
@@ -309,7 +315,7 @@ sampleClustering <- hclust(d)
 batch <- as.integer(factor(tss))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
 names(batch) <- colnames(se.filt2)
-outcome <- paste(substr(colnames(se.filt2), 9, 12), as.character(se.filt2$type), sep="-")
+outcome <- paste(substr(colnames(se.filt), 9, 12), as.character(se.filt3$type), sep="-")
 names(outcome) <- colnames(se.filt2)
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
@@ -327,9 +333,9 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(tss))), fil
 ## Batch: Plate
 batch <- as.integer(factor(plate))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
-names(batch) <- colnames(se.filt2)
-outcome <- paste(substr(colnames(se.filt2), 9, 12), as.character(se.filt2$type), sep="-")
-names(outcome) <- colnames(se.filt2)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
                                  if (is.leaf(x)) {
@@ -363,7 +369,7 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(samplevial)
 
 
 ```{r hiercClust4, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Portion Analyte"}
-## Batch: Sample Vial
+## Batch: Portion annalyte
 batch <- as.integer(factor(portionanalyte))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
 names(batch) <- colnames(se.filt2)
@@ -385,7 +391,7 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(portionanal
 All three dendograms (Figures \@ref(fig:hiercClust1), \@ref(fig:hiercClust2) and \@ref(fig:hiercClust3)) seem to confirm the absence of any batch effect. Nevertheless, there are 3 suspicious samples: two tumor samples (5546, 5591) clustered with the normal samples, and one normal sample (5591) clustered with the tumor samples. As for the 5546 sample, we do not know what is it that exactly happened, (it might be correct because it's an outgroup from the normal samples, but we are not sure).The two 5591 samples, however, come from the same individual, which makes us consider the possibility of a label swap between the two samples. Thus, the 5591 normal sample might be in fact tumorous and viceversa. Moreover, the 4698-tumor sample is an outlier that may distort multidimensional plots. For these reasons and to avoid further potential problems, we have decided to discard these four samples (fourth filtering). Now the number of left samples is 112 (55 normal, 57 tumor).
 
 ```{r hiercClustFilt}
-HAY QUE ELIMINAR ESTOS SEGURO, NO?
+#HAY QUE ELIMINAR ESTOS SEGURO, NO?
 se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]
 dge.filt4 <- dge.filt3[,grep("5546|5591|4698", colnames(dge.filt3), invert=TRUE)]
 ## We keep the discarded sumples just in case want to analyze them later on
