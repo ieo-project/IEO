@@ -391,7 +391,6 @@ All three dendograms (Figures \@ref(fig:hiercClust1), \@ref(fig:hiercClust2) and
 ```{r hiercClustFilt}
 #HAY QUE ELIMINAR ESTOS SEGURO, NO?
 
-
 se.filt4 <- se.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(se.filt3), invert=TRUE)]
 dge.filt4 <- dge.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(dge.filt3), invert=TRUE)]
 #se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]       OLD FILTERING
@@ -477,7 +476,34 @@ We perform a simple examination of expression changes and their associated p-val
 ```{r diffExp, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples"}
 
 #mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
+# Creating the linear regression model and adjusting for covariates
 mod <- model.matrix(~factor(se.filt4$type) + factor(tss2)+ factor(plate2)+ factor(portionanalyte2) , colData(se.filt4))
+# Calculating the number of over/underexpressed genes, and its p-values, logFC... 
+fit <- lmFit(assays(se.filt4)$logCPM, mod)
+fit <- eBayes(fit)
+FDRcutoff <- 0.1
+res <- decideTests(fit, p.value = FDRcutoff)
+summary(res)
+# Showing the most significant DE genes with added metadata
+genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], stringsAsFactors = FALSE)
+fit$genes <- genesmd
+tt <- topTable(fit, coef = 2, n = Inf)
+head(tt)
+# DE genes per chromosome --> maybe look for another interesting variable
+sort(table(tt$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
+
+# Adjusting for unknown covariates
+
+mod0 <- model.matrix(~factor(tss2) + factor(plate2) + factor(portionanalyte2), colData(se.filt4))
+sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
+sv$n
+mod <- cbind(mod, sv$sv)
+colnames(mod) <- c(colnames(mod)[1:4], paste0("SV", 1:sv$n))
+
+...
+
+
+# Y esto qué es, porque no da el mismo mumero de DE genes que en las tablas de antes...
 mod0 <- model.matrix(~ 1, colData(se.filt4))
 pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
 sum(p.adjust(pv, method="fdr")< 0.01)
