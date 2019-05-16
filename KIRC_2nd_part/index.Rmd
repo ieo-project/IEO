@@ -477,11 +477,12 @@ We perform a simple examination of expression changes and their associated p-val
 ```{r diffExp, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples"}
 
 #mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
-mod <- model.matrix(~factor(se.filt4$type) + factor(tss2) + factor(plate2)+ factor(portionanalyte2)+ factor(samplevial2), colData(se.filt4))
+mod <- model.matrix(~factor(se.filt4$type) + factor(tss2)+ factor(plate2)+ factor(portionanalyte2) , colData(se.filt4))
 mod0 <- model.matrix(~ 1, colData(se.filt4))
 pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
 sum(p.adjust(pv, method="fdr")< 0.01)
 hist(pv, main="",las=1)
+#9825 10149 10623 10708
 ```
 
 There are 10640 genes changing significantly their expression at FDR < 1%. Figure \@ref(fig:diffExp) from above shows the distribution of the resulting p-values.
@@ -508,14 +509,14 @@ hist(pvsv, main="",las=1)
 We have increased the number of changing genes to 12031. Figure \@ref(fig:diffExpAdj) from above shows the distribution of the resulting p-values.
 
 ```{r LIMMA}
-mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
-fit <- lmFit(assays(se.filt4)$logCPM,mod2)
+#mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
+fit <- lmFit(assays(se.filt4)$logCPM,modsv)
 fit <- eBayes(fit)
 res <- decideTests(fit)
-summary(res)
-FDRcutoff <- 0.05
+#summary(res)
+FDRcutoff <- 0.01
 res <- decideTests(fit, p.value = FDRcutoff)
-summary(res)
+#summary(res)
 tt <- topTable(fit, coef = 2, n = Inf)
 head(tt)
 genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,
@@ -529,7 +530,7 @@ tt.filt <- tt[abs(tt$logFC)>3,]
 tt.filt <- tt.filt[tt.filt$P.Value < 1e-5,]
 head(tt)
 
-ggplot(data=tt) +
+ggplot(data=tt.filt) +
 geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
 scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
 geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
