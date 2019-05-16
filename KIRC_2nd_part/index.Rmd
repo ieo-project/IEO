@@ -140,22 +140,20 @@ PAIRED DATAAAAAAAAAAA
 normal_IDs <- substr(colnames(se.filt[,se.filt$type=="normal"]),1,12)
 tumor_IDs <- substr(colnames(se.filt[,se.filt$type=="tumor"]),1,12)
 IDs <- substr(colnames(se.filt),1,12)
-tab1 <- table(IDs)
 paired_mask <- IDs %in% normal_IDs & IDs %in% tumor_IDs
-table(paired_mask)
-paired_se <- se.filt[,paired_mask]
-dge <- dge.filt[, paired_mask]
+se.filt2 <- se.filt[,paired_mask]
+dge.filt2<- dge.filt[, paired_mask]
 colData(paired_se)[1:5,1:5]
 ```
 
 
 
 ```{r seqDepth, dpi=200, fig.width=14, fig.height=8, fig.align = "center", fig.cap="Library sizes in increasing order"}
-ord <- order(dge$sample$lib.size)
-summary(dge$sample$lib.size/1e+06)
-barplot(dge$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[paired_se$gender[ord]], space=c(0,0))
+ord <- order(dge.filt2$sample$lib.size)
+#summary(dge.filt2$sample$lib.size/1e+06)
+barplot(dge.filt2$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[se.filt2$gender[ord]], space=c(0,0))
 legend("topleft", c("female", "male", "NA"), fill = c("red", "blue", "white"), inset = 0.02)
-abline(h=(sum(colSums(assays(paired_se)$counts))/1e6)/ncol(paired_se))
+abline(h=(sum(colSums(assays(se.filt2)$counts))/1e6)/ncol(se.filt2))
 ```
 
 Figure \@ref(fig:seqDepth) shows the sequencing depth per sample, also known as library size, in increasing order. There is a good distribution of male and female samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 45 million reads. We apply a threshold of 21M to discard low sequencing depth samples. We use this specific value, because we can observe at the plot that there is a change in the distribution peaks (a jump from 20.9M to 24M). After the filtering, the number of samples is reduced from 614 to 596.
@@ -163,8 +161,8 @@ Figure \@ref(fig:seqDepth) shows the sequencing depth per sample, also known as 
 We store un-normalized versions of the data filtered by sample depth (cutoff of 21 CPM).
 
 ```{r}
-saveRDS(se.filt, file.path("results", "se.filt.unnorm.rds"))
-saveRDS(dge.filt, file.path("results", "dge.filt.unnorm.rds"))
+saveRDS(se.filt2, file.path("results", "se.filt2.unnorm.rds"))
+saveRDS(dge.filt2, file.path("results", "dge.filt2.unnorm.rds"))
 ```
 
 ## Distribution of expression levels among samples
@@ -172,11 +170,11 @@ saveRDS(dge.filt, file.path("results", "dge.filt.unnorm.rds"))
 We look at the distribution of expression values per sample in terms of logarithmic CPM units using [geneplotter](http://bioconductor.org/packages/geneplotter) R/Bioconductor package.
 
 ```{r distRawExp, fig.align="center", dpi=200, fig.width=14, fig.height=6, fig.cap="Non-parametric density distribution of expression profiles per sample"}
-assays(se.filt)$logCPM <- cpm(dge.filt, log=TRUE, prior.count=0.5)
+assays(se.filt2)$logCPM <- cpm(dge.filt2, log=TRUE, prior.count=0.5)
 par(mfrow=c(1, 2))
-multidensity(as.list(as.data.frame(assays(se.filt[, se.filt$type == "tumor"])$logCPM)),
+multidensity(as.list(as.data.frame(assays(se.filt2[, se.filt2$type == "tumor"])$logCPM)),
              xlab="log 2 CPM", legend=NULL, main="tumor", las=1)
-multidensity(as.list(as.data.frame(assays(se.filt[, se.filt$type == "normal"])$logCPM)),
+multidensity(as.list(as.data.frame(assays(se.filt2[, se.filt2$type == "normal"])$logCPM)),
              xlab="log 2 CPM", legend=NULL, main="normal", las=1)
 ```
 
@@ -187,7 +185,7 @@ Figure \@ref(fig:distRawExp) shows that the normal samples have a good CPM distr
 Now we calculate the average expression per gene through all the samples, and plot the distribution of expression levels across genes (Figure \@ref(fig:exprDist). It allows us to identify lowly expressed genes.
 
 ```{r exprDist, fig.align = "center", fig.cap="Distribution of average expression level per gene"}
-avgexp <- rowMeans(assays(se.filt)$logCPM)
+avgexp <- rowMeans(assays(se.filt2)$logCPM)
 par(mar = c(4, 5, 1, 1))
 h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), main = "", 
     las = 1, col = "grey", cex.axis = 1.2, cex.lab = 1.5)
@@ -201,19 +199,19 @@ In our case, the minimum CPM is 0.6 in at least 72 samples, which is the sample 
 
 ```{r exprDistFilt, fig.align = "center", fig.cap="Distribution of average expression level per gene, showing the filtered genes in red"}
 # CPM cutoff
-cpm_cutoff <- round(15/min(dge.filt$samples$lib.size/1e+06), digits = 1)
-cpm_cutoff
-nsamplescutoff <- min(table(se.filt$type))
-nsamplescutoff
-mask <- rowSums(cpm(dge.filt) > cpm_cutoff) >= nsamplescutoff
-se.filt2 <- se.filt[mask, ]
-dge.filt2 <- dge.filt[mask, ]
-dim(se.filt2)
+cpm_cutoff <- round(15/min(dge.filt2$samples$lib.size/1e+06), digits = 1)
+#cpm_cutoff
+nsamplescutoff <- min(table(se.filt2$type))
+#nsamplescutoff
+mask <- rowSums(cpm(dge.filt2) > cpm_cutoff) >= nsamplescutoff
+se.filt3 <- se.filt2[mask, ]
+dge.filt3 <- dge.filt2[mask, ]
+#dim(se.filt3)
 # Plot
 par(mar = c(4, 5, 1, 1))
 h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), main = "", 
     las = 1, col = "grey", cex.axis = 1.2, cex.lab = 1.5)
-x <- cut(rowMeans(assays(se.filt2)$logCPM), breaks = h$breaks)
+x <- cut(rowMeans(assays(se.filt3)$logCPM), breaks = h$breaks)
 lines(h$mids, table(x), type = "h", lwd = 10, lend = 1, col = "darkred")
 legend("topleft", c("All genes", "Filtered genes"), fill = c("grey", "darkred"))
 ```
@@ -223,8 +221,8 @@ After the filtering, we remove most of the lowly-expressed genes, but as we can 
 We store the un-normalized versions of the data filtered by gene expression (cutoff of 0.6 CPM expressed in at least 72 samples).
 
 ```{r}
-saveRDS(se.filt2, file.path("results", "se.filt2.unnorm.rds"))
-saveRDS(dge.filt2, file.path("results", "dge.filt2.unnorm.rds"))
+saveRDS(se.filt3, file.path("results", "se.filt3.unnorm.rds"))
+saveRDS(dge.filt3, file.path("results", "dge.filt3.unnorm.rds"))
 ```
 
 ## Between-sample normalization
@@ -234,16 +232,16 @@ We calculate now the normalization factors on the filtered expression data set a
 ```{r bsNorm, fig.align = "center", dpi=200, fig.width=7, fig.height=4, fig.cap="Normalized filtered expression data (right) and unnormalized unfiltered expression data (left)"}
 #Unnormalized first filtered data set
 par(mfrow = c(1, 2))
-dge.filt$samples$group <- se.filt$type
-plotSmear(dge.filt, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
-abline(h = 0, col = "blue", lwd = 2)
-#Normalized second filtered dataset
-dge.filt2 <- calcNormFactors(dge.filt2)
 dge.filt2$samples$group <- se.filt2$type
 plotSmear(dge.filt2, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
 abline(h = 0, col = "blue", lwd = 2)
+#Normalized second filtered dataset
+dge.filt3 <- calcNormFactors(dge.filt3)
+dge.filt3$samples$group <- se.filt3$type
+plotSmear(dge.filt3, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
+abline(h = 0, col = "blue", lwd = 2)
 
-table(dge.filt2$samples$group)
+#table(dge.filt2$samples$group)
 ```
 
 After the normalization on the filtered expression data we correct two previous artifacts:
@@ -257,11 +255,11 @@ After the normalization on the filtered expression data we correct two previous 
 Using the TCGA barcode from the samples we can asses whether the plate idenfitier, tissue source site, portion analyte, sample vial and center can work as surrogates for batch effect indicators.
 
 ```{r batchEffect}
-tss <- substr(colnames(se.filt2), 6, 7)
-center <- substr(colnames(se.filt2), 27, 28)
-plate <- substr(colnames(se.filt2), 22, 25)
-portionanalyte <- substr(colnames(se.filt2), 18, 20)
-samplevial <- substr(colnames(se.filt2), 14, 16)
+tss <- substr(colnames(se.filt3), 6, 7)
+center <- substr(colnames(se.filt3), 27, 28)
+plate <- substr(colnames(se.filt3), 22, 25)
+portionanalyte <- substr(colnames(se.filt3), 18, 20)
+samplevial <- substr(colnames(se.filt3), 14, 16)
 
 table(data.frame(TYPE=se.filt2$type, TSS=tss))
 table(data.frame(TYPE=se.filt2$type, CENTER=center))
@@ -307,16 +305,16 @@ After the third filtering, the sample distribution is much better, thus we have 
 We perform a hierarchical clustering of the samples indicating the batch to which each of them belongs to, to check if there is still some batch that might be confounding the outcome of interest.
 
 ```{r hiercClust1, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Tissue Source Site (TSS)"}
-logCPM <- cpm(dge.filt2, log=TRUE, prior.count=3)
+logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
 d <- as.dist(1-cor(logCPM, method="spearman"))
 sampleClustering <- hclust(d)
 
 ## Batch: Tissue Source Site (TSS)
 batch <- as.integer(factor(tss))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
-names(batch) <- colnames(se.filt2)
-outcome <- paste(substr(colnames(se.filt), 9, 12), as.character(se.filt3$type), sep="-")
-names(outcome) <- colnames(se.filt2)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
                                  if (is.leaf(x)) {
@@ -352,9 +350,9 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(plate))), f
 ## Batch: Sample Vial
 batch <- as.integer(factor(samplevial))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
-names(batch) <- colnames(se.filt2)
-outcome <- paste(substr(colnames(se.filt2), 9, 12), as.character(se.filt2$type), sep="-")
-names(outcome) <- colnames(se.filt2)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
                                  if (is.leaf(x)) {
@@ -372,9 +370,9 @@ legend("topright", paste("Batch", sort(unique(batch)), levels(factor(samplevial)
 ## Batch: Portion annalyte
 batch <- as.integer(factor(portionanalyte))
 sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
-names(batch) <- colnames(se.filt2)
-outcome <- paste(substr(colnames(se.filt2), 9, 12), as.character(se.filt2$type), sep="-")
-names(outcome) <- colnames(se.filt2)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
 sampleDendrogram <- dendrapply(sampleDendrogram,
                                function(x, batch, labels) {
                                  if (is.leaf(x)) {
@@ -392,15 +390,25 @@ All three dendograms (Figures \@ref(fig:hiercClust1), \@ref(fig:hiercClust2) and
 
 ```{r hiercClustFilt}
 #HAY QUE ELIMINAR ESTOS SEGURO, NO?
-se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]
-dge.filt4 <- dge.filt3[,grep("5546|5591|4698", colnames(dge.filt3), invert=TRUE)]
+
+
+se.filt4 <- se.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(se.filt3), invert=TRUE)]
+dge.filt4 <- dge.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(dge.filt3), invert=TRUE)]
+#se.filt4 <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3), invert=TRUE)]       OLD FILTERING
+#dge.filt4 <- dge.filt3[,grep("5546|5591|4698", colnames(dge.filt3), invert=TRUE)]    OLD FILTERING
 ## We keep the discarded sumples just in case want to analyze them later on
-se.dis <- se.filt3[,grep("5546|5591|4698", colnames(se.filt3))]
-tss3 <- substr(colnames(se.filt4), 6, 7)
-plate3 <- substr(colnames(se.filt4), 22, 25)
-portionanalyte3 <- substr(colnames(se.filt4), 18, 20)
-samplevial3 <- substr(colnames(se.filt4), 14, 16)
+se.dis <- se.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(se.filt3))]
+tss2 <- substr(colnames(se.filt4), 6, 7)
+plate2 <- substr(colnames(se.filt4), 22, 25)
+portionanalyte2 <- substr(colnames(se.filt4), 18, 20)
+samplevial2 <- substr(colnames(se.filt4), 14, 16)
 dim(dge.filt4)
+table(se.filt4$type)
+
+table(data.frame(TYPE=se.filt4$type, TSS=tss2))
+table(data.frame(TYPE=se.filt4$type, PLATE=plate2))
+table(data.frame(TYPE=se.filt4$type, SAMPLEVIAL=samplevial2))
+table(data.frame(TYPE=se.filt4$type, PORTIONANALYTE=portionanalyte2))
 ```
 
 ## Batch effect: Multidimensional scaling
@@ -408,12 +416,12 @@ dim(dge.filt4)
 Now we make use of multidimensional scaling plots to check, first if there is a batch effect by gender?, and second other potential variables that might be a new outcome of interest in tumor samples: cancer stage, tumor grade, cancer laterality, and vital status
 
 ```{r MDSPlot1, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for the batch effect of Gender"}
-tumor_se <- se.filt2[,se.filt2$type == "tumor"]
-tumor_dge <- dge.filt2[,se.filt2$type == "tumor"]
+tumor_se <- se.filt4[,se.filt4$type == "tumor"]
+tumor_dge <- dge.filt4[,se.filt4$type == "tumor"]
 
 ## Gender
-se_gender <- se.filt2[,!is.na(se.filt2$gender)]
-dge_gender <- dge.filt2[,!is.na(se.filt2$gender)]
+se_gender <- se.filt4[,!is.na(se.filt4$gender)]
+dge_gender <- dge.filt4[,!is.na(se.filt4$gender)]
 batch <- as.integer(factor(se_gender$gender))
 outcome <- paste(factor(se_gender$type), substr(colnames(dge_gender), 9, 12), sep="-")
 plotMDS(dge_gender, col = batch,labels = outcome, cex = 0.7)
@@ -468,7 +476,8 @@ We perform a simple examination of expression changes and their associated p-val
 
 ```{r diffExp, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples"}
 
-mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
+#mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
+mod <- model.matrix(~factor(se.filt4$type) + factor(tss2) + factor(plate2)+ factor(portionanalyte2)+ factor(samplevial2), colData(se.filt4))
 mod0 <- model.matrix(~ 1, colData(se.filt4))
 pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
 sum(p.adjust(pv, method="fdr")< 0.01)
