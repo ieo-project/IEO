@@ -475,20 +475,22 @@ We perform a simple examination of expression changes and their associated p-val
 
 ```{r diffExp, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples"}
 
-#mod <- model.matrix(~ se.filt4$type, colData(se.filt4))
 # Creating the linear regression model and adjusting for covariates
 mod <- model.matrix(~factor(se.filt4$type) + factor(tss2)+ factor(plate2)+ factor(portionanalyte2) , colData(se.filt4))
 # Calculating the number of over/underexpressed genes, and its p-values, logFC... 
 fit <- lmFit(assays(se.filt4)$logCPM, mod)
 fit <- eBayes(fit)
-FDRcutoff <- 0.1
+FDRcutoff <- 0.01
 res <- decideTests(fit, p.value = FDRcutoff)
 summary(res)
+pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
+sum(p.adjust(pv, method="fdr")< 0.01)     #9011
+hist(pv, main="",las=1)
+
 # Showing the most significant DE genes with added metadata
 genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], stringsAsFactors = FALSE)
 fit$genes <- genesmd
 tt <- topTable(fit, coef = 2, n = Inf)
-head(tt)
 # DE genes per chromosome --> maybe look for another interesting variable
 sort(table(tt$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
 
@@ -498,15 +500,15 @@ mod0 <- model.matrix(~factor(tss2) + factor(plate2) + factor(portionanalyte2), c
 sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
 sv$n
 mod <- cbind(mod, sv$sv)
-colnames(mod) <- c(colnames(mod)[1:4], paste0("SV", 1:sv$n))
+colnames(mod) <- c(colnames(mod)[1:16], paste0("SV", 1:sv$n))
 
-...
+#...
 
 
 # Y esto qué es, porque no da el mismo mumero de DE genes que en las tablas de antes...
-mod0 <- model.matrix(~ 1, colData(se.filt4))
+#mod0 <- model.matrix(~ 1, colData(se.filt4))
 pv <- f.pvalue(assays(se.filt4)$logCPM, mod, mod0)
-sum(p.adjust(pv, method="fdr")< 0.01)
+sum(p.adjust(pv, method="fdr")< 0.01)     #13283
 hist(pv, main="",las=1)
 #9825 10149 10623 10708
 ```
@@ -525,8 +527,8 @@ sv$n
 The SVA algorithm has found 18 surrogate variables. Now, we use them to assess against the extent of differential expression, this time adjusting for these surrogate variables.
 
 ```{r diffExpAdj, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples, after SVA"}
-modsv <- cbind(mod, sv$sv)
-mod0sv <- cbind(mod0, sv$sv)
+#modsv <- cbind(mod, sv$sv)
+#mod0sv <- cbind(mod0, sv$sv)
 pvsv <- f.pvalue(assays(se.filt4)$logCPM, modsv, mod0sv)
 sum(p.adjust(pvsv,method="fdr")<0.01)
 hist(pvsv, main="",las=1)
@@ -536,19 +538,22 @@ We have increased the number of changing genes to 12031. Figure \@ref(fig:diffEx
 
 ```{r LIMMA}
 #mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
-fit <- lmFit(assays(se.filt4)$logCPM,modsv)
-fit <- eBayes(fit)
-res <- decideTests(fit)
+fit <- lmFit(assays(se.filt4)$logCPM,mod)
+fit <- eBayes(fit, trend = TRUE)
+#res <- decideTests(fit)
 #summary(res)
 FDRcutoff <- 0.01
 res <- decideTests(fit, p.value = FDRcutoff)
 #summary(res)
-tt <- topTable(fit, coef = 2, n = Inf)
-head(tt)
 genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,
 1], stringsAsFactors = FALSE, logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)))
-
 fit$genes <- genesmd
+tt <- topTable(fit, coef = 2, n = Inf)
+sort(table(tt$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
+
+hist(tt$P.Value, xlab = "Raw P-values", main = "", las = 1)
+
+sum(tt[,tt$adj.P.Val<FDRcutoff])
 fit$logCPM <- data.frame(logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)), stringsAsFactors = FALSE)
 
 tt <- topTable(fit, coef = 2, n = Inf)
@@ -564,11 +569,6 @@ geom_vline(xintercept = 3, linetype="dashed",
                 color = "black", size=1)+
   geom_vline(xintercept = -3, linetype="dashed", 
                 color = "black", size=1)
-
-sel <- which(tt$logFC<=-3) # or whatever you want to use
-points(tt[sel,"logFC"], -log(tt[sel,"P.value"]),col="red")
-sel <- which(gene_list$logFD>log(2)) # or whatever you want to use
-points(gene_list[sel,"logFC"], -log10(gene_list[sel,"P.value"]),col="red")
 
 ```
 
