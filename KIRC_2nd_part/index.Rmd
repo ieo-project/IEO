@@ -450,44 +450,27 @@ We perform a simple examination of expression changes and their associated p-val
 ```{r diffExp, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples"}
 
 # Creating the linear regression model and adjusting for covariates
-mod <- model.matrix(~factor(se.filt4$type) + factor(tss2)+ factor(plate2)+ factor(portionanalyte2) , colData(se.filt4))
+mod <- model.matrix(~factor(se.filt4$type) + factor(se.filt4$bcr_patient_barcode) , colData(se.filt4))
+mod0 <- model.matrix(~factor(se.filt4$bcr_patient_barcode), colData(se.filt4))
+sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
+sv$n
+mod <- cbind(mod, sv$sv)
+colnames(mod) <- c(colnames(mod)[1:66], paste0("SV", 1:sv$n))
 fit <- lmFit(assays(se.filt4)$logCPM, mod)
 fit <- eBayes(fit)
+genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)),stringsAsFactors = FALSE)
+fit$genes <- genesmd
+tt <- topTable(fit, coef = 2, n = Inf)
 FDRcutoff <- 0.01
 res <- decideTests(fit, p.value = FDRcutoff)
 summary(res)
-# Showing the most significant DE genes with added metadata
-genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], stringsAsFactors = FALSE)
-fit$genes <- genesmd
-tt <- topTable(fit, coef = 2, n = Inf)
-# DE genes per chromosome --> maybe look for another interesting variable
-sort(table(tt$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
-
-sum(tt$P.Value<FDRcutoff)
 
 par(mfrow = c(1, 2), mar = c(4, 5, 2, 2))
 hist(tt$P.Value, xlab = "Raw P-values", main = "", las = 1)
 qqt(fit$t[, 2], df = fit$df.prior + fit$df.residual, main = "", pch = ".", cex = 3)
 abline(0, 1, lwd = 2)
 
-# Adjusting for unknown covariates
-
-mod0 <- model.matrix(~factor(tss2) + factor(plate2) + factor(portionanalyte2), colData(se.filt4))
-sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
-sv$n
-mod <- cbind(mod, sv$sv)
-colnames(mod) <- c(colnames(mod)[1:16], paste0("SV", 1:sv$n))
-fit2 <- lmFit(assays(se.filt4)$logCPM, mod)
-fit2 <- eBayes(fit2)
-fit2$genes <- genesmd
-tt2 <- topTable(fit2, coef = 2, n = Inf)
-#A
-par(mfrow = c(1, 2), mar = c(4, 5, 2, 2))
-hist(tt2$P.Value, xlab = "Raw P-values", main = "", las = 1)
-qqt(fit2$t[, 2], df = fit2$df.prior + fit2$df.residual, main = "", pch = ".", cex = 3)
-abline(0, 1, lwd = 2)
-
-sum(tt2$P.Value<FDRcutoff)
+sum(tt$adj.P.Val<FDRcutoff)
 ```
 
 There are 10640 genes changing significantly their expression at FDR < 1%. Figure \@ref(fig:diffExp) from above shows the distribution of the resulting p-values.
@@ -496,47 +479,24 @@ There are 10640 genes changing significantly their expression at FDR < 1%. Figur
 
 Surrogate variables are sources of hereogeneity in high-throughput profiling data, such as non-biological variability introduced by batch effects. We use the  to estimate the surrogate variables and adjust by these confounding effects. The previous model matrices are needed.
 
-```{r Estimation of surrogate variables}
-sv <- sva(assays(se.filt4)$logCPM, mod, mod0)
-sv$n
-```
-
-The SVA algorithm has found 18 surrogate variables. Now, we use them to assess against the extent of differential expression, this time adjusting for these surrogate variables.
-
-```{r diffExpAdj, fig.align="center", fig.cap="Distribution of raw p-values for an F-test on every gene between tumor and normal samples, after SVA"}
-#modsv <- cbind(mod, sv$sv)
-#mod0sv <- cbind(mod0, sv$sv)
-pvsv <- f.pvalue(assays(se.filt4)$logCPM, modsv, mod0sv)
-sum(p.adjust(pvsv,method="fdr")<0.01)
-hist(pvsv, main="",las=1)
-```
-
-We have increased the number of changing genes to 12031. Figure \@ref(fig:diffExpAdj) from above shows the distribution of the resulting p-values.
-
 ```{r LIMMA}
-#mod2 <- model.matrix(~factor(se.filt4$type) + factor(tss3) + factor(plate3), data = colData(se.filt4))
-fit <- lmFit(assays(se.filt4)$logCPM,mod)
-fit <- eBayes(fit, trend = TRUE)
-#res <- decideTests(fit)
-#summary(res)
-FDRcutoff <- 0.01
-res <- decideTests(fit, p.value = FDRcutoff)
-#summary(res)
-genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,
-1], stringsAsFactors = FALSE, logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)))
-fit$genes <- genesmd
-tt <- topTable(fit, coef = 2, n = Inf)
-sort(table(tt$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
 
-hist(tt$P.Value, xlab = "Raw P-values", main = "", las = 1)
-
-sum(tt[,tt$adj.P.Val<FDRcutoff])
-fit$logCPM <- data.frame(logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)), stringsAsFactors = FALSE)
+#fit$logCPM <- data.frame(logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)), stringsAsFactors = FALSE)
 
 tt <- topTable(fit, coef = 2, n = Inf)
 tt.filt <- tt[abs(tt$logFC)>3,]
 tt.filt <- tt.filt[tt.filt$P.Value < 1e-5,]
 head(tt)
+
+par(mfrow = c(1, 2), mar = c(4, 5, 2, 2))
+ggplot(data=tt) +
+geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
+scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
+geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
+geom_vline(xintercept = 3, linetype="dashed", 
+                color = "black", size=1)+
+  geom_vline(xintercept = -3, linetype="dashed", 
+                color = "black", size=1)
 
 ggplot(data=tt.filt) +
 geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
@@ -547,11 +507,16 @@ geom_vline(xintercept = 3, linetype="dashed",
   geom_vline(xintercept = -3, linetype="dashed", 
                 color = "black", size=1)
 
+length(tt.filt$symbol)
+length()
 ```
 
 
 
 ```{r}
+
+###HAVE TO REVISE
+
 logCPM <- cpm(dge.filt4, log=TRUE, prior.count=3)
 tumorExp <- rowMeans(logCPM[, se.filt4$type == "tumor"])
 normalExp <- rowMeans(logCPM[, se.filt4$type == "normal"])
