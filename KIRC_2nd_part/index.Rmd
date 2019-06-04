@@ -508,8 +508,44 @@ geom_vline(xintercept = 3, linetype="dashed",
                 color = "black", size=1)
 
 length(tt.filt$symbol)
-length()
 ```
+
+```{r sessioninfo}
+library(org.Hs.eg.db)
+library(GOstats)
+DEGs <- rownames(tt.filt)
+guniverse <- rownames(se)
+params <- new("GOHyperGParams", geneIds=DEGs, universeGeneIds=guniverse,annotation="org.Hs.eg.db", ontology="BP",pvalueCutoff=0.05, testDirection="over")
+
+hgOver <- hyperGTest(params)
+hgOver
+htmlReport(hgOver, file = "gotests.html")
+browseURL("gotests.html")
+```
+```{r sessioninfo}
+conditional(params) <- TRUE
+hgOverCond <- hyperGTest(params)
+
+goresults <- summary(hgOverCond)
+goresults <- goresults[goresults$Size >= 3 & goresults$Size <= 300 & goresults$Count >= 3, ]
+goresults <- goresults[order(goresults$OddsRatio, decreasing=TRUE), ]
+head(goresults)
+```
+```{r sessioninfo}
+geneIDs <- geneIdsByCategory(hgOverCond)[goresults$GOBPID]
+geneSYMs <- sapply(geneIDs, function(id) select(org.Hs.eg.db, columns = "SYMBOL", key = id, keytype = "ENTREZID")$SYMBOL)
+geneSYMs <- sapply(geneSYMs, paste, collapse = ", ")
+goresults <- cbind(goresults, Genes = geneSYMs)
+rownames(goresults) <- 1:nrow(goresults)
+```
+
+```{r sessioninfo}
+library(xtable)
+xtab <- xtable(goresults, align = "l|c|r|r|r|r|r|p{3cm}|p{3cm}|")
+print(xtab, file = "goresults.html", type = "html")
+```
+
+
 ```{r sessioninfo}
 sessionInfo()
 ```
