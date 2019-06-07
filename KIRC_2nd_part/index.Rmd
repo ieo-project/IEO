@@ -456,7 +456,9 @@ sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
 sv$n
 mod <- cbind(mod, sv$sv)
 colnames(mod) <- c(colnames(mod)[1:66], paste0("SV", 1:sv$n))
-fit <- lmFit(assays(se.filt4)$logCPM, mod)
+v <- voom(dge.filt4, mod, plot=TRUE)
+#fit2 <- lmFit(assays(se.filt4)$logCPM, mod)
+fit <- lmFit(v, mod)
 fit <- eBayes(fit)
 genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)),stringsAsFactors = FALSE)
 fit$genes <- genesmd
@@ -484,9 +486,26 @@ Surrogate variables are sources of hereogeneity in high-throughput profiling dat
 #fit$logCPM <- data.frame(logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)), stringsAsFactors = FALSE)
 
 tt <- topTable(fit, coef = 2, n = Inf)
-tt.filt <- tt[abs(tt$logFC)>3,]
-tt.filt <- tt.filt[tt.filt$P.Value < 1e-5,]
-head(tt)
+tt.filt <- tt[tt$adj.P.Val < FDRcutoff,]
+DEgenes <- rownames(tt.filt[abs(tt.filt$logFC) > 3,])
+length(DEgenes)
+#DEgenes <- rownames(tt.filt[tt.filt$logFC > 3 | tt.filt$logFC < -3 ,])
+
+## Mirar up y down por separado
+#mask <- tt.filt$logFC > 3 | tt.filt$logFC < -3
+#DEgenes2 <- rownames(tt.filt[mask,])
+#DEgenes2 178(up)+398(down)
+
+### Genes implicados en KIRC
+#tt[tt$symbol == "PTEN",]
+# NO tenemos los genes: VHL, AMPK
+# Demás genes:
+# SETD2 --> p-value = 0.587 y logFC = 0.054
+# PBRM1 --> p-value = 3e-07, logFC = -0.87, logCPM = 3
+# ARID1A --> p-value 0.07, logFC = 0.23, logCPM = 6.4
+# SMARCA4 --> p-value = 7e-27, logFC = -0.8, logCPM = 7.87
+# PTEN --> p-value = 6e-08, logFC = 0.32, logCPM = 5.33
+# media de logCPM = 4.362 (ranges from -2 to 12)
 
 par(mfrow = c(1, 2), mar = c(4, 5, 2, 2))
 ggplot(data=tt) +
@@ -498,7 +517,7 @@ geom_vline(xintercept = 3, linetype="dashed",
   geom_vline(xintercept = -3, linetype="dashed", 
                 color = "black", size=1)
 
-ggplot(data=tt.filt) +
+ggplot(data=tt.filt[abs(tt.filt$logFC) > 3,]) +
 geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
 scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
 geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
@@ -510,28 +529,32 @@ geom_vline(xintercept = 3, linetype="dashed",
 length(tt.filt$symbol)
 ```
 
+LIMMA-TREND: 637
+LIMMA-VOOM: 575
+
 ```{r sessioninfo}
 library(org.Hs.eg.db)
 library(GOstats)
-DEGs <- rownames(tt.filt)
+#DEGs <- rownames(tt.filt)
 guniverse <- rownames(se)
-params <- new("GOHyperGParams", geneIds=DEGs, universeGeneIds=guniverse,annotation="org.Hs.eg.db", ontology="BP",pvalueCutoff=0.05, testDirection="over")
+params <- new("GOHyperGParams", geneIds=DEgenes, universeGeneIds=guniverse,annotation="org.Hs.eg.db", ontology="BP",pvalueCutoff=0.05, testDirection="over")
 
 hgOver <- hyperGTest(params)
 hgOver
 htmlReport(hgOver, file = "gotests.html")
-browseURL("gotests.html")
+#browseURL("gotests.html")
+
+# 575 genes DE (after filtering by p-value and LOG-FC) but only 501 which have a GO term
 ```
 ```{r sessioninfo}
 conditional(params) <- TRUE
 hgOverCond <- hyperGTest(params)
-
 goresults <- summary(hgOverCond)
 goresults <- goresults[goresults$Size >= 3 & goresults$Size <= 300 & goresults$Count >= 3, ]
 goresults <- goresults[order(goresults$OddsRatio, decreasing=TRUE), ]
 head(goresults)
 ```
-```{r sessioninfo}
+```{r sessioninfo, include=FALSE}
 geneIDs <- geneIdsByCategory(hgOverCond)[goresults$GOBPID]
 geneSYMs <- sapply(geneIDs, function(id) select(org.Hs.eg.db, columns = "SYMBOL", key = id, keytype = "ENTREZID")$SYMBOL)
 geneSYMs <- sapply(geneSYMs, paste, collapse = ", ")
@@ -543,8 +566,94 @@ rownames(goresults) <- 1:nrow(goresults)
 library(xtable)
 xtab <- xtable(goresults, align = "l|c|r|r|r|r|r|p{3cm}|p{3cm}|")
 print(xtab, file = "goresults.html", type = "html")
+browseURL("goresults.html")
 ```
 
+## GENE SET ENRICHMENT ANALYSIS
+
+```{r}
+library(GSEABase)
+GS <- GeneSet(EntrezIdentifier("org.Hs.eg.db"), geneIds = rownames(se.filt4), setName = "KRCC")
+details(GS)
+
+GSsym <- mapIdentifiers(GS, SymbolIdentifier())
+GSsym[1:10]
+
+library(GSVAdata)
+data(c2BroadSets)
+c2BroadSets
+length(c2BroadSets)
+
+### For the sake of speed, we restrict this analysis to pathways from KEGG, REACTOME and BIOCARTA: ###
+
+#c2BroadSets <- c2BroadSets[c(grep("^KEGG", names(c2BroadSets)),
+#grep("^REACTOME", names(c2BroadSets)), grep("^BIOCARTA", names(c2BroadSets)))]
+#c2BroadSets
+
+gsc <- GeneSetCollection(c(c2BroadSets, GS))
+gsc
+
+gsc <- mapIdentifiers(gsc, AnnoOrEntrezIdentifier(metadata(se.filt4)$annotation))
+gsc
+
+Im <- incidence(gsc)
+dim(Im)
+Im[1:2, 1:10]
+
+Im <- Im[, colnames(Im) %in% rownames(se.filt4)]
+dim(Im)
+
+se.filt4 <- se.filt4[colnames(Im), ]
+dim(se.filt4)
+
+
+Im <- Im[rowSums(Im) >= 5, ]
+dim(Im)
+
+tGSgenes <- tt[match(colnames(Im), rownames(tt)), "t"]
+length(tGSgenes)
+head(tGSgenes)
+
+zS <- sqrt(rowSums(Im)) * (as.vector(Im %*% tGSgenes)/rowSums(Im))
+length(zS)
+head(zS)
+
+
+rnkGS <- sort(abs(zS), decreasing = TRUE)
+head(rnkGS,200)
+
+```
+
+```{r}
+plotGS <- function(se, gs, pheno, ...) {
+l <- levels(colData(se)[, pheno])
+idxSamples1 <- colData(se)[, pheno] == l[1]
+idxSamples2 <- colData(se)[, pheno] == l[2]
+exps1 <- rowMeans(assays(se)$logCPM[gs, idxSamples1])
+exps2 <- rowMeans(assays(se)$logCPM[gs, idxSamples2])
+rng <- range(c(exps1, exps2))
+plot(exps1, exps2, pch = 21, col = "black", bg = "black", xlim = rng, ylim = rng,
+xlab = l[1], ylab = l[2], ...)
+abline(a = 0, b = 1, lwd = 2, col = "red")
+}
+
+genesGS1 <- colnames(Im)[which(Im[names(rnkGS)[1], ] == 1)]
+genesGS2 <- colnames(Im)[which(Im[names(rnkGS)[2], ] == 1)]
+par(mfrow = c(1, 2), mar = c(4, 5, 3, 4))
+plotGS(se.filt4, genesGS1, "type", main = names(rnkGS)[1], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS2, "type", main = names(rnkGS)[2], cex.lab = 2, las = 1)
+
+```
+
+```{r}
+pv <- pmin(pnorm(zS), 1 - pnorm(zS))
+sum(pv < 0.05)
+
+pvadj <- p.adjust(pv, method = "fdr")
+DEgs <- names(pvadj)[which(pvadj < 0.01)]
+length(DEgs)
+head(DEgs, n = 3)
+```
 
 ```{r sessioninfo}
 sessionInfo()
