@@ -1,0 +1,906 @@
+---
+title: "Analysis of a TCGA RNA-seq data set on Kidney Clear Cell Carcinoma"
+author:
+- name: J. Sanchez
+  affiliation:
+  - &id Master Programme on Bioinformatics for Health Sciences, Universitat Pompeu Fabra, Barcelona, Catalonia
+  email: javier.sanchez14@estudiant.upf.edu
+- name: P. Badia
+  affiliation: *id
+  email: pau.badia01@estudiant.upf.edu
+- name: G. Palou 
+  affiliation: *id
+  email: guillermo.palou@upf.edu
+date: "`r format(Sys.time(), '%B %e, %Y')`"
+output:
+  BiocStyle::html_document:
+    toc: true
+    fig_caption: yes
+    toc_float: true
+    number_sections: true
+bibliography: bibliography.bib
+---
+
+# Introduction
+
+Kidney Clear Cell Carcinoma or clear cell renal cell carcinoma (ccRCC), is a chemotherapy-resistant disease that can be distinguished of other cancer because affected cells show a clear cytoplasm, are surrounded by a distinct cell membrane and contain round and uniform nuclei. Inherited predisposition to ccRCC has been shown to arise from genes involved
+in regulating cellular metabolism, making ccRCC a model for the role of an oncologic-metabolic shift.
+The Cancer Genome Atlas (TCGA) has comprehensively profiled this type of cancer
+in a patient cohort. Here we analyze the expression profiles of those
+patients, accessible in the form of a raw RNA-seq counts produced by
+@natureTCGA using a pipeline based on the R/Bioconductor
+software package `Rsubread`.
+
+This document is written in [R markdown](https://rmarkdown.rstudio.com) and
+should be processed using R and you need to install the packages
+`r CRANpkg("knitr")` and `r CRANpkg("markdown")`. Moreover, it using the official
+style for Bioconductor vignettes facilitated by the Bioconductor package
+`r Biocpkg("BiocStyle")`. Please consult that package documentation, and particularly
+the [vignette](http://bioconductor.org/packages/release/bioc/vignettes/BiocStyle/inst/doc/AuthoringRmdVignettes.html)
+on "Authoring R Markdown vignettes", for full details on how to elaborate this
+kind of documents.
+
+The specific instructions to generate the final HTML report are written in a
+[Makefile](https://en.wikipedia.org/wiki/Makefile). To run it you just need to type
+
+   ```
+   $ make
+   ```
+
+on the unix shell. The `makefile` contains instructions to separately process
+the different files that integrate this report, and so only the file that has
+been modified will be rebuilt. If you wish to remove or add files to be processed,
+you should modify the `makefile`.
+
+The directory `results` will contain resulting files produced during the analysis,
+however, figures are going to end by default directories associated with the
+source filenames from where they were created.
+
+# Quality analysis
+
+Before starting, we need to import all the libraries that are going to be used in this analysis.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+```
+
+
+```{r libraries, results = 'hide', message=FALSE, warning=FALSE}
+library(knitr)
+library(SummarizedExperiment)
+library(edgeR)
+library(geneplotter)
+library(sva)
+library(ggplot2)
+library(GSVAdata)
+library(GSEABase)
+library(Category)
+```
+
+## Data import
+
+First, we import the dataset and store it in a `SummarizedExperiment` object, named `se`. This kind of object has genes on its rows and samples on its columns, 20115 genes and 614 samples in our case. Both of these entities have their own associated metadata, i.e., gene symbol, lenght and GC content for genes. For samples, there are more than 500 more fields, for instance type, gender and race.
+
+```{r dataImp, echo=TRUE}
+se <- readRDS(file.path("input","seKIRC.rds"))
+se
+```
+
+Next, we explore the dimensions of the column data of the `se` object, containing the samples data and we observe that it has 614 rows (samples) and 549 columns (metadata fields). To see the possible values that each clinical variable can have we use `mcols` function.
+
+```{r colData, echo = TRUE}
+dim(colData(se))
+colData(se)[1:5, 1:5]
+mcols(colData(se), use.names=TRUE)
+```
+
+These metadata consists of two columns of information about the clinical variables.
+One called `labelDescription` contains a succint description of the variable, often
+not more self-explanatory than the variable name itself, and the other called
+'CDEID' corresponds to the so-called `Common Data Element (CDE)` identifier. This
+identifier can be use in https://cdebrowser.nci.nih.gov to search for further
+information about the associated clinical variable using the `Advanced search`
+form and the `Public ID` attribute search.
+
+We do the same with the gene data and observe the metadata mentioned before.
+
+```{r rowData, echo = FALSE, message = TRUE}
+dim(rowData(se))
+rowData(se)
+```
+
+To perform quality assessment and normalization we use the [edgeR](http://bioconductor.org/packages/edgeR) R/Bioconductor package and create a `DGEList` objec, which we are going to save in the file `dge.rds`.
+
+```{r DGE, include=TRUE}
+dge <- DGEList(counts=assays(se)$counts, genes=mcols(se))
+saveRDS(dge, file.path("results", "dge.rds"))
+```
+
+## Within-sample normalization
+Now we calculate $\log_2$ CPM values of expression and put them as an additional assay element to ease their manipulation.
+
+```{r CPM}
+assays(se)$logCPM <- cpm(dge, log=TRUE, prior.count=0.5)
+assays(se)$logCPM[1:5, 1:5]
+```
+
+## Filtering of sequencing depth (first filtering)
+
+We then examine the sequencing depth in terms of total number of sequence read counts mapped to the genome per sample and filter those samples that have less than 20M reads, with the goal of having samples with a sufficient amount of reads so meaningful inferences can be made from this analysis. This filtering removes 13 samples from our dataset, leaving a total of 601 samples. We then save the new filtered `se` and `dge` objects with new names, `.filt`.
+
+```{r exp_filt_samples}
+cpm_cutoff <- 20
+mask <- colSums(assays(se)$counts)/1e6 > cpm_cutoff
+se.filt <- se[, mask]
+dge.filt <- dge[, mask]
+dim(se.filt)
+```
+
+## Paired samples selection (second filtering)
+
+We now select the paired samples from the dataset, i.e., individuals from which there are both tumorous and healthy tissue samples, since the comparison of these kind of samples will give more statistical power to our analysis and will allow to control non-biological sources of variation. This step removes most of the samples, leaving a total of 142 samples, 71 tumorous and 71 healthy, i.e., each one of them coming from a different individual, 71 individuals. We then save the new filtered `se` and `dge` objects with new names, `.filt2`.
+
+```{r}
+normal_IDs <- substr(colnames(se.filt[,se.filt$type=="normal"]),1,12)
+tumor_IDs <- substr(colnames(se.filt[,se.filt$type=="tumor"]),1,12)
+IDs <- substr(colnames(se.filt),1,12)
+paired_mask <- IDs %in% normal_IDs & IDs %in% tumor_IDs
+se.filt2 <- se.filt[,paired_mask]
+dge.filt2<- dge.filt[, paired_mask]
+colData(se.filt2)[1:5,1:5]
+```
+
+## Distribution of sequencing depth
+
+We now analyze the sequencing depth of our paired samples, with a minimum of 20M reads and check that the gender of the samples is not correlated with the sequencing depth.
+
+```{r seqDepth, dpi=200, fig.width=14, fig.height=8, fig.align = "center", fig.cap="Library sizes in increasing order"}
+a = 1.5
+ord <- order(dge.filt2$sample$lib.size)
+summary(dge.filt2$sample$lib.size/1e+06)
+barplot(dge.filt2$sample$lib.size[ord]/1e+06, las = 1, ylab = "Millions of reads", xlab = "Samples", col = c("red", "blue")[se.filt2$type[ord]], space=c(0,0), cex.lab=a, cex.axis=a, cex.main=a, cex.sub=a, main="Sequencing depth")
+legend("topleft", c("tumor", "normal"), fill = c("red", "blue"), inset = 0.02, cex = 1.5)
+abline(h=(sum(colSums(assays(se.filt2)$counts))/1e6)/ncol(se.filt2))
+```
+
+Figure \@ref(fig:seqDepth) shows the sequencing depth per sample, also known as library size, in increasing order. There is a good distribution of tumor and normal samples with different sequencing depth. However, there is a huge difference between some samples, taking into account that the average is around 50 million reads. However, this will not affect the results, since 20M is an acceptable library size.
+
+We store un-normalized data from the paired samples filtered by sequencing depth (cutoff of 20 CPM).
+
+```{r}
+saveRDS(se.filt2, file.path("results", "se.filt2.unnorm.rds"))
+saveRDS(dge.filt2, file.path("results", "dge.filt2.unnorm.rds"))
+```
+
+## Distribution of expression levels among samples
+
+We look at the distribution of expression values per sample in terms of logarithmic CPM units using [geneplotter](http://bioconductor.org/packages/geneplotter) R/Bioconductor package.
+
+```{r distRawExp, fig.align="center", dpi=200, fig.width=14, fig.height=6, fig.cap="Non-parametric density distribution of expression profiles per sample"}
+assays(se.filt2)$logCPM <- cpm(dge.filt2, log=TRUE, prior.count=0.5)
+par(mfrow=c(1, 2))
+multidensity(as.list(as.data.frame(assays(se.filt2[, se.filt2$type == "tumor"])$logCPM)),
+             xlab="log 2 CPM", legend=NULL, main="tumor", las=1, cex.lab=a, cex.main=a, cex.sub=a)
+multidensity(as.list(as.data.frame(assays(se.filt2[, se.filt2$type == "normal"])$logCPM)),
+             xlab="log 2 CPM", legend=NULL, main="normal", las=1, cex.lab=a, cex.main=a, cex.sub=a)
+```
+
+Figure \@ref(fig:distRawExp) shows that the normal samples have a good logCPM distribution, but some of the tumor samples seem to have a distinct RNA composition. Let's see if this can be fixed later on by filtering.
+
+## Distribution and filtering of expression levels among genes (third filtering)
+
+Now we calculate the average expression per gene through all the samples, and plot the distribution of expression levels across genes (Figure \@ref(fig:exprDist)). It allows us to identify lowly expressed genes.
+
+```{r exprDist, fig.align = "center", fig.width=14, fig.height=7, fig.cap="Distribution of average expression level per gene"}
+avgexp <- rowMeans(assays(se.filt2)$logCPM)
+par(mar = c(4, 5, 1, 1))
+h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), main = "", 
+    las = 1, col = "grey", cex.axis = 1, cex.lab = 1.4)
+```
+
+RNA-seq expression profiles from lowly-expressed genes can lead to artifacts in downstream differential expression analyses. For this reason, we remove them following this criteria:
+
+- Filter out genes with fewer than a given number of samples meeting a minimum expression (logCPM) cut-off.
+
+In our case, the minimum logCPM is 0.6 in at least 71 samples, which is the sample size of the control group.
+
+```{r exprDistFilt, fig.align = "center", fig.width=14, fig.height=7, fig.cap="Distribution of average expression level per gene, showing the filtered genes in red"}
+# CPM cutoff
+cpm_cutoff <- round(15/min(dge.filt2$samples$lib.size/1e+06), digits = 1)
+nsamplescutoff <- min(table(se.filt2$type))
+mask <- rowSums(cpm(dge.filt2) > cpm_cutoff) >= nsamplescutoff
+se.filt3 <- se.filt2[mask, ]
+dge.filt3 <- dge.filt2[mask, ]
+
+# Plot
+par(mar = c(4, 5, 1, 1))
+h <- hist(avgexp, xlab = expression("Expression level (" * log[2] * "CPM)"), main = "", 
+    las = 1, col = "grey", cex.axis = 1.2, cex.lab = 1.5)
+x <- cut(rowMeans(assays(se.filt3)$logCPM), breaks = h$breaks)
+lines(h$mids, table(x), type = "h", lwd = 10, lend = 1, col = "darkred")
+legend("topright", c("All genes", "Filtered genes"), fill = c("grey", "darkred"), cex = 1.5)
+```
+
+After the filtering, we remove most of the lowly-expressed genes, a total of 6585, keeping just 13330 of the original 20115 but as we can observe in Figure \@ref(fig:exprDistFilt) still some of them are not removed (negative logCPM). These are lowly-expressed genes that only are expressed in normal samples (thus follows the criteria). Because they are not expressed in tumor samples, the average logCPM is negative. However, genes that are expressed, although not very significantly, in normal samples but not in tumor ones might be of interest.
+
+We store the un-normalized versions of the data filtered by gene expression (cutoff of 0.6 logCPM expressed in at least 71 samples).
+
+```{r}
+saveRDS(se.filt3, file.path("results", "se.filt3.unnorm.rds"))
+saveRDS(dge.filt3, file.path("results", "dge.filt3.unnorm.rds"))
+```
+
+## Between-sample normalization
+
+We calculate now the normalization factors on the filtered expression data set and compare the corresponding plot (Figure \@ref(fig:bsNorm) rigth) with the unnormalized expression data set (Figure \@ref(fig:bsNorm) left). 
+
+```{r bsNorm, fig.align = "center", dpi=200, fig.width=14, fig.height=7, fig.cap="Normalized filtered expression data (right) and unnormalized unfiltered expression data (left)"}
+#Unnormalized first filtered data set
+par(mfrow = c(1, 2))
+dge.filt2$samples$group <- se.filt2$type
+plotSmear(dge.filt2, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
+abline(h = 0, col = "blue", lwd = 2)
+#Normalized second filtered dataset
+dge.filt3 <- calcNormFactors(dge.filt3)
+dge.filt3$samples$group <- se.filt3$type
+plotSmear(dge.filt3, lowess = TRUE, las = 1, cex.lab = 1.5, cex.axis = 1.2)
+abline(h = 0, col = "blue", lwd = 2)
+assays(se.filt3)$logCPM <- cpm(dge.filt3, log=TRUE, prior.count=0.5)
+
+```
+
+two previous artifacts can be observed in the unnormalized data (Figure \@ref(fig:bsNorm) left):
+
+1) A majority of genes seem to be upregulated under a condition where we do not expect it.
+
+2) Large fold changes tend to occur at low expression levels (orange color in the left plot), because ratios between low numbers may easy lead to large fold-changes.
+
+After the normalization on the filtered expression data we correct both of them (Figure \@ref(fig:bsNorm) rigth): the first one by means of the between-sample normalization, and the second one by the filtration of lowly-expressed genes.
+
+## Batch Identification
+
+Using the TCGA barcode from the samples we can asses whether the plate identifier, tissue source site, portion analyte, sample vial and center can work as surrogates for batch effect indicators.
+
+```{r batchEffect}
+tss <- substr(colnames(se.filt3), 6, 7)
+center <- substr(colnames(se.filt3), 27, 28)
+plate <- substr(colnames(se.filt3), 22, 25)
+portionanalyte <- substr(colnames(se.filt3), 18, 20)
+samplevial <- substr(colnames(se.filt3), 14, 16)
+
+table(data.frame(TYPE=se.filt2$type, TSS=tss))
+table(data.frame(TYPE=se.filt2$type, CENTER=center))
+table(data.frame(TYPE=se.filt2$type, PLATE=plate))
+table(data.frame(TYPE=se.filt2$type, SAMPLEVIAL=samplevial))
+table(data.frame(TYPE=se.filt2$type, PORTIONANALYTE=portionanalyte))
+
+```
+
+We can see that the distribution of the samples across the different variables is quite uniform, since they are paired samples, however some of them are not balanced, such as samplevial and portion analyte. We will not remove any samples, since we are going to include these variables in our model and adjust for them in case they produce a batch effect, so the inferences about differential gene expression are accurate.
+
+## Batch effect: hierarchical clustering (fourth filtering)
+
+We perform a hierarchical clustering of the samples indicating the batch to which each of them belongs to, to check if there is still some batch that might be confounding the outcome of interest.
+
+```{r hiercClust1, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Tissue Source Site (TSS)"}
+logCPM <- cpm(dge.filt3, log=TRUE, prior.count=3)
+d <- as.dist(1-cor(logCPM, method="spearman"))
+sampleClustering <- hclust(d)
+
+## Batch: Tissue Source Site (TSS)
+batch <- as.integer(factor(tss))
+sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
+sampleDendrogram <- dendrapply(sampleDendrogram,
+                               function(x, batch, labels) {
+                                 if (is.leaf(x)) {
+                                   attr(x, "nodePar") <- list(lab.col=as.vector(batch[attr(x, "label")]))
+                                   attr(x, "label") <- as.vector(labels[attr(x, "label")])
+                                 }
+                                 x
+                               }, batch, outcome)
+plot(sampleDendrogram, main="Hierarchical clustering of samples colored by TSS")
+legend("topright", paste("Batch", sort(unique(batch)), levels(factor(tss))), fill=sort(unique(batch)), cex = 1.5)
+```
+
+```{r hiercClust2, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Plate"}
+## Batch: Plate
+batch <- as.integer(factor(plate))
+sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
+sampleDendrogram <- dendrapply(sampleDendrogram,
+                               function(x, batch, labels) {
+                                 if (is.leaf(x)) {
+                                   attr(x, "nodePar") <- list(lab.col=as.vector(batch[attr(x, "label")]))
+                                   attr(x, "label") <- as.vector(labels[attr(x, "label")])
+                                 }
+                                 x
+                               }, batch, outcome)
+plot(sampleDendrogram, main="Hierarchical clustering of samples colored by plate")
+legend("topright", paste("Batch", sort(unique(batch)), levels(factor(plate))), fill=sort(unique(batch)), cex=1.5)
+```
+
+```{r hiercClust3, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Sample Vial"}
+## Batch: Sample Vial
+batch <- as.integer(factor(samplevial))
+sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
+sampleDendrogram <- dendrapply(sampleDendrogram,
+                               function(x, batch, labels) {
+                                 if (is.leaf(x)) {
+                                   attr(x, "nodePar") <- list(lab.col=as.vector(batch[attr(x, "label")]))
+                                   attr(x, "label") <- as.vector(labels[attr(x, "label")])
+                                 }
+                                 x
+                               }, batch, outcome)
+plot(sampleDendrogram, main="Hierarchical clustering of samples colored by sample vial")
+legend("topright", paste("Batch", sort(unique(batch)), levels(factor(samplevial))), fill=sort(unique(batch)), cex=1.5)
+```
+
+
+```{r hiercClust4, fig.align = "center", dpi=200, fig.width=14, fig.height=8, fig.cap="Hierarchical clustering of the samples, colored by Portion Analyte"}
+## Batch: Portion annalyte
+batch <- as.integer(factor(portionanalyte))
+sampleDendrogram <- as.dendrogram(sampleClustering, hang=0.1)
+names(batch) <- colnames(se.filt3)
+outcome <- paste(substr(colnames(se.filt3), 9, 12), as.character(se.filt3$type), sep="-")
+names(outcome) <- colnames(se.filt3)
+sampleDendrogram <- dendrapply(sampleDendrogram,
+                               function(x, batch, labels) {
+                                 if (is.leaf(x)) {
+                                   attr(x, "nodePar") <- list(lab.col=as.vector(batch[attr(x, "label")]))
+                                   attr(x, "label") <- as.vector(labels[attr(x, "label")])
+                                 }
+                                 x
+                               }, batch, outcome)
+plot(sampleDendrogram, main="Hierarchical clustering of samples colored by portion analyte")
+legend("topright", paste("Batch", sort(unique(batch)), levels(factor(portionanalyte))), fill=sort(unique(batch)), cex=1.5)
+```
+
+
+The first two dendograms of TSS (figure \@ref(fig:hiercClust1)) and plate (figure \@ref(fig:hiercClust2)) seem to confirm the absence of any batch effect. However, sample vial (figure \@ref(fig:hiercClust3)) and portion analyte (figure \@ref(fig:hiercClust4)) do produce a big clustering between normal and tumor samples. This will be take into account when doing the linear regression model.
+Moreover, there are 4 pairs of samples that are suspicious, this is 4 tumor samples that cluster with the normal ones: 4619, 5636, 5681 and 5591. We can see that the normal 5591 sample clusters perfectly with the tumor samples, so we deduced that this could be a labeling error. The other three, however have both their normal and tumor samples clustering with the normal ones. This could maybe mean that these tumor samples are in an early stage of the cancer development. Moreover, on the tumor samples, we have two clear outliers, 5989 and 6087, whose normal samples do not cluster unappropiately. For inference reasons, we discarded all of these samples and saved them in another object. This leaves us with 65 paired samples (130 in total).
+
+```{r hiercClustFilt}
+se.filt4 <- se.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(se.filt3), invert=TRUE)]
+dge.filt4 <- dge.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(dge.filt3), invert=TRUE)]
+se.dis <- se.filt3[,grep("5591|5636|4619|5681|6087|5989", colnames(se.filt3))]
+
+assays(se.filt4)$logCPM <- cpm(dge.filt4, log=TRUE, prior.count=0.5)
+
+tss2 <- substr(colnames(se.filt4), 6, 7)
+plate2 <- substr(colnames(se.filt4), 22, 25)
+portionanalyte2 <- substr(colnames(se.filt4), 18, 20)
+samplevial2 <- substr(colnames(se.filt4), 14, 16)
+
+dim(dge.filt4)
+table(se.filt4$type)
+
+table(data.frame(TYPE=se.filt4$type, TSS=tss2))
+table(data.frame(TYPE=se.filt4$type, PLATE=plate2))
+table(data.frame(TYPE=se.filt4$type, SAMPLEVIAL=samplevial2))
+table(data.frame(TYPE=se.filt4$type, PORTIONANALYTE=portionanalyte2))
+```
+
+## Batch effect: Multidimensional scaling
+
+Now we make use of multidimensional scaling plots to check, first if there is a batch effect by gender, and second other potential variables that might be a new outcome of interest in tumor samples: cancer stage, tumor grade, cancer laterality, and vital status
+
+```{r MDSPlot1, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for the batch effect of Gender"}
+tumor_se <- se.filt4[,se.filt4$type == "tumor"]
+tumor_dge <- dge.filt4[,se.filt4$type == "tumor"]
+
+## Gender
+se_gender <- se.filt4[,!is.na(se.filt4$gender)]
+dge_gender <- dge.filt4[,!is.na(se.filt4$gender)]
+batch <- as.integer(factor(se_gender$gender))
+outcome <- paste(factor(se_gender$type), substr(colnames(dge_gender), 9, 12), sep="-")
+plotMDS(dge_gender, col = batch,labels = outcome, cex = 0.7)
+legend("bottomleft", paste("Batch", sort(unique(batch)), levels(factor(se_gender$gender))), fill=sort(unique(batch)), inset=0.005, cex = 1.5)
+```
+
+```{r MDSPlot2, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for the outcome of interest Cancer Stage"}
+## Cancer stage
+
+tumor_stage_se <- tumor_se[,!is.na(tumor_se$ajcc_pathologic_tumor_stage)]
+tumor_stage_dge <-tumor_dge[,!is.na(tumor_se$ajcc_pathologic_tumor_stage)]
+batch <- as.integer(factor(tumor_stage_se$ajcc_pathologic_tumor_stage))
+outcome <- substr(colnames(tumor_stage_dge), 9, 12)
+plotMDS(tumor_stage_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topright", sort(unique(batch)), levels(factor(tumor_stage_se$ajcc_pathologic_tumor_stage)), fill=sort(unique(batch)), inset=0.005, cex = 1.5)
+```
+
+```{r MDSPlot3, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for for the outcome of interest Tumor Grade"}
+## Tumor grade
+tumor_grade_se <- tumor_se[,!is.na(tumor_se$tumor_grade)]
+tumor_grade_dge <-tumor_dge[,!is.na(tumor_se$tumor_grade)]
+batch <- as.integer(factor(tumor_grade_se$tumor_grade))
+outcome <- substr(colnames(tumor_grade_dge), 9, 12)
+plotMDS(tumor_grade_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topright", sort(unique(batch)), levels(factor(tumor_grade_se$tumor_grade)), fill=sort(unique(batch)), inset=0.005, cex = 1.5)
+```
+
+```{r MDSPlot4, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for for the outcome of interest Cancer Laterality"}
+## Cancer laterality
+tumor_late_se <- tumor_se[,!is.na(tumor_se$laterality)]
+tumor_late_dge <-tumor_dge[,!is.na(tumor_se$laterality)]
+batch <- as.integer(factor(tumor_late_se$laterality))
+outcome <- substr(colnames(tumor_late_dge), 9, 12)
+plotMDS(tumor_late_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topright", sort(unique(batch)), levels(factor(tumor_late_se$laterality)), fill=sort(unique(batch)), inset=0.005, cex = 1.5)
+```
+
+```{r MDSPlot5, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Multidimensional Scaling Plot for for the outcome of interest Vital Status"}
+## Vital status
+tumor_status_se <- tumor_se[,!is.na(tumor_se$vital_status)]
+tumor_status_dge <-tumor_dge[,!is.na(tumor_se$vital_status)]
+batch <- as.integer(factor(tumor_status_se$vital_status))
+outcome <- substr(colnames(tumor_status_dge), 9, 12)
+plotMDS(tumor_status_dge, col = batch,labels = outcome, cex = 0.7)
+legend("topright", sort(unique(batch)), levels(factor(tumor_status_se$vital_status)), fill=sort(unique(batch)), inset=0.005, cex = 1.5)
+```
+
+The first plot (figure \@ref(fig:MDSPlot1)) shows that there is no correlation between the gender and the logFC for the genes among the samples, which clusters them according to the outcome of interest (tumor or normal), for males and females are uniformly distributed among the two groups, considereing that there are more males than females.The rest of the plots (figures \@ref(fig:MDSPlot2), \@ref(fig:MDSPlot3), \@ref(fig:MDSPlot4), \@ref(fig:MDSPlot5)) do not show any cluster by the new outcomes of interest in the tumor samples, thus might not be significant gene expression differences among the groups in the four variables.
+
+# Differential gene expression
+
+Once all the data is properly filtered, we perform an examination of expression changes and their associated p-values using the [limma](http://bioconductor.org/packages/limma) and [sva](http://bioconductor.org/packages/sva) R/bionconductor packages. 
+We first create a `linear regression model` and adjust for covariates. The covariates are the variables that can confound the outcome of interest, that is, a variable whose presence affects the variable being studied so that the results do not reflect the actual relationship.
+The known covariates are the ones that produces batch effect, among others, in our case these are portion analyte and sample vial. Moreover, as we have done a paired design, we need to add the patient ID (or the barcode, which in this case is the same as it is unique for each patient) in the model. Nevertheless, once we add the patient barcode, the rest of covariables such as portion analyte and sample vial are already corrected, because both normal and tumor samples are from the same patient.
+Exists surrogate variables, which are also sources of hereogeneity in high-throughput profiling data, that we cannot be aware of. Even so, we can adjust for these unkown covariates using `surrogate variable analysis` (SVA). Then, we calculate moderated t-statistics for differential gene expression, with a FDR cutoff of 0.01.
+Of note is that, we use `limma-voom`, instead of `limma-trend`, because we have a important differences in sequencing depth between samples, as voom estimates the mean-variance relationship at gene-by-sample level.
+
+## Linear Regression Model and adjustment for known and unkown covariates
+
+```{r LRM}
+
+# Creating the linear regression model and adjusting for covariates (which are already corrected by adding the patient barcode for the paired design)
+mod <- model.matrix(~factor(se.filt4$type) + factor(se.filt4$bcr_patient_barcode) , colData(se.filt4))
+mod0 <- model.matrix(~factor(se.filt4$bcr_patient_barcode), colData(se.filt4))
+# Adjusting for unkown covariates
+sv <- sva(assays(se.filt4)$logCPM, mod = mod, mod0 = mod0)
+mod <- cbind(mod, sv$sv)
+colnames(mod) <- c(colnames(mod)[1:66], paste0("SV", 1:sv$n))
+# Limma Voom
+v <- voom(dge.filt4, mod, plot=TRUE)
+# Calculating t-statistics
+fit <- lmFit(v, mod)
+fit <- eBayes(fit)
+# Adding genes metadata
+genesmd <- data.frame(chr = as.character(seqnames(rowRanges(se.filt4))), symbol = rowData(se.filt4)[,1], logCPM = as.numeric(rowMeans(assays(se.filt4)$logCPM)),stringsAsFactors = FALSE)
+fit$genes <- genesmd
+# Fetching the table of results
+tt <- topTable(fit, coef = 2, n = Inf)
+FDRcutoff <- 0.01
+# Examine the extent of differential expression at 1% FDR:
+res <- decideTests(fit, p.value = FDRcutoff)
+#summary(res)
+
+# Calculating the number of DEGs genes
+sum(tt$adj.P.Val<FDRcutoff)
+
+# Filter out DEGs by FDR and logFC
+tt.filt <- tt[tt$adj.P.Val < FDRcutoff,]
+DEgenes <- tt.filt[tt.filt$logFC >= 2 | tt.filt$logFC <= -2 ,]
+# Number of filtered DEGs
+length(DEgenes$symbol)
+# Number of upregulated DEGs
+length(rownames(DEgenes[DEgenes$logFC >= 2,]))
+# Number of downregulated DEGs
+length(rownames(DEgenes[DEgenes$logFC <= -2,]))
+# Table with complete results from all DEGs
+head(DEgenes[order(abs(DEgenes$logFC),decreasing=TRUE),],10)
+# Checking the number of DEGs in each chromosome
+#sort(table(DEgenes$chr[tt$adj.P.Val < FDRcutoff]), decreasing = TRUE)
+
+```
+
+There are 10824 (from 13330) differentially expressed genes (DEGs) at FDR threshold of 0.01, which accounts for 81% of all the genes in the dataset. Adding a second filter of logFC > 2 or < -2, leaves us with 1411 DEGs (11% from the total). From these DEGs, 676 are upregulated and 735 are downregulated. We can visualize the results plotting a `volcanot plot` for these DEGs, a histogram for the raw p-values and a `qqplot` for t-statistics.
+
+## Volcano plot for DEGs, p-values histogram, t-statistics QQplot 
+
+```{r DGVolcano1, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Volcano Plot for all DEGs"}
+
+# Volcano plot for all genes
+ggplot(data=tt) +
+theme_grey(base_size = 22) +
+geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
+scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
+geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
+geom_vline(xintercept = 2, linetype="dashed", 
+                color = "black", size=1)+
+  geom_vline(xintercept = -2, linetype="dashed", 
+                color = "black", size=1)
+
+```
+
+```{r DGVolcano2, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Volcano Plot for DEGs passing both thresholds"}
+
+# Volcanot plot for only DEGs with more than 2 abs(logFC)
+ggplot(data=DEgenes) +
+theme_grey(base_size = 22) +
+geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
+scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
+geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
+geom_vline(xintercept = 2, linetype="dashed", 
+                color = "black", size=1)+
+  geom_vline(xintercept = -2, linetype="dashed", 
+                color = "black", size=1)
+
+```
+
+In the first volcano plot (figure \@ref(fig:DGVolcano1)) we observe all genes along logFC X axis and P-value Y axis. There are two cutoffs, one for the p-value (FDR < 0.01), and another for the logFC (> 2 or < -2). As stated before, there are 10818 DE genes below the p-value cutoff, these are all genes above the horizontal threshold from the volcano plot. Adding the logFC cutoff decreases the number of DE genes from 10818 to 1411, and these are the genes above the horizontal line + to the left (or to the right) from the vertical thresholds (figure \@ref(fig:DGVolcano2)).
+
+```{r DGHistQQ, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="P-values histogram and t-statistics QQplot"}
+
+# Histogram for the p-values and qqplot for t-statistics
+par(mfrow = c(1, 2), mar = c(4, 5, 2, 2))
+hist(tt$P.Value, xlab = "Raw P-values", main = "", las = 1, cex.lab=a)
+qqt(fit$t[, 2], df = fit$df.prior + fit$df.residual, main = "", pch = ".", cex = 3, cex.lab=a)
+abline(0, 1, lwd = 2)
+```
+
+Figure \@ref(fig:DGHistQQ), left, from above shows the distribution of the resulting raw p-values. An expected peak is below the significant 0.01 threshold of a p-value, while the rest of non-significant p-values remains with a uniform distribution. The QQplot from figure \@ref(fig:DGHistQQ), right, shows that the vast majority of observed t-statistics do not follow its expected value (diagonal), thus, the t-statistics distribution is not normal, confirming the previous plot, where most of the genes are differentially expressed. 
+This is actually somehow expected, as in cancer the control of the cell is completely altered and only few genes remains with the same level of expression as in a normal cell.
+
+# Functional analysis by Gene Set Enrichment Analysis (GSEA)
+
+## Mean shift detection (Z-score)
+
+We performed a functional analysis using `Gene Set Enrichment Analysis (GSEA)` to annotate which pathways are enriched by our list of DEGs. This analysis can be done in the [GSEABase](http://bioconductor.org/packages/GSEABase) R/Bioconductor package. We could have done a `GO` or `GSVA` analysis as another alternatives but we decided to do GSEA instead.
+The databases used were from `KEGG`, `BIOCARTA` and `REACTOME`. The reason is because these are the most wide used databases in the current literature, and it would be more difficult to make an analysis interpretation and corroborate our results with the articles having pathways from other databases.
+In addition, we set a gene set minimum size of 5 genes, to be more reliable. However, we lowered the threshold to 3 to catch up a few other pathways that were interesting for ccRCC, although their interpretation should be cautelous, as they are not as reliable.
+`Z-score` and its associated p-value (and adjusted by FDR at 1% ) were calculated for each pathway.
+
+```{r ZQQplot, fig.align="center", dpi = 200, fig.width=14, fig.height=8, fig.cap="Z-scores QQplot"}
+
+# Create a gene set using all DEGs (not a necessary step)
+GS <- GeneSet(EntrezIdentifier("org.Hs.eg.db"), geneIds = rownames(DEgenes), setName = "ccRCC")
+#details(GS)
+
+# Replace given IDs by Entrez IDs for all the genes
+GSsym <- mapIdentifiers(GS, SymbolIdentifier())
+
+# Obtain all human gene sets from GSVAdata package 
+data(c2BroadSets)
+#c2BroadSets
+#length(c2BroadSets)
+
+# Restrict this analysis to pathways from KEGG, REACTOME and BIOCARTA: ###
+c2BroadSets <- c2BroadSets[c(grep("^KEGG", names(c2BroadSets)),
+grep("^REACTOME", names(c2BroadSets)), grep("^BIOCARTA", names(c2BroadSets)))]
+#length(c2BroadSets)
+
+# Join all human gene sets with the DEGs gene set
+gsc <- GeneSetCollection(c(c2BroadSets, GS))
+#gsc
+
+# Create the incidence matrix indicating what genes belong to what gene set
+Im_5 <- incidence(gsc)
+#dim(Im)
+#Im_5[1:2, 1:10]
+
+# We discard genes (columns in Im) that do not form part of our data
+Im_5 <- Im_5[, colnames(Im_5) %in% rownames(DEgenes)]
+#dim(Im_5)
+
+# Require gene sets with a minimum size of 5 genes: (change to 3 if needed)
+Im_5 <- Im_5[rowSums(Im_5) >= 5, ]
+dim(Im_5)
+Im_5[1:5,1:5]
+
+# Store all moderated t-statistics for the genes forming the incidence matrix of gene sets
+tGSgenes_5 <- DEgenes[match(colnames(Im_5), rownames(DEgenes)), "t"]
+#length(tGSgenes_5)
+#head(tGSgenes_5)
+
+# Calculate the Zs statistic
+zS <- sqrt(rowSums(Im_5)) * (as.vector(Im_5 %*% tGSgenes_5)/rowSums(Im_5))
+#length(zS)
+#head(zS)
+
+# QQ plot of gene set Z-scores
+qqnorm(zS, cex.lab = 1.5)
+abline(0, 1)
+
+# Sort the gene sets by Z-score
+rnkGSz <- sort(abs(zS), decreasing = TRUE)
+rnkGSzs <- as.data.frame(sort(abs(zS), decreasing = TRUE))
+colnames(rnkGSzs) <- "z-score"
+#rnkGSzs
+#head(rnkGSz)
+
+# Perform one sample z-test by calculating p-values
+pv_zs <- pmin(pnorm(zS), 1 - pnorm(zS))
+# Number of pathways: 207
+length(zS) 
+# Number of pathways upregulated/downregulated: 124/83
+table(zS>0)
+# Number of pathways significantly enriched (p-value < 0.05): 187
+sum(pv_zs < 0.05) 
+
+# FDR multiple test correction 
+pvadj_zs <- p.adjust(pv_zs, method = "fdr")
+# Number of pathways significantly enriched (FDR < 0.01): 187
+sum(pvadj_zs < 0.01)
+rnkGSpz <- as.data.frame(sort(pvadj_zs, decreasing = FALSE))
+colnames(rnkGSpz) <- "p-value"
+#rnkGSpz
+
+# Merge both Z-score and P-values dataframes into one
+DEgs_z5<- merge(rnkGSzs,rnkGSpz,by="row.names")
+colnames(DEgs_z5) <- c("pathways","z-score","Z_p-value")
+head(DEgs_z5[order(DEgs_z5$`z-score`,decreasing=TRUE),],10)
+
+write.csv(as.data.frame(DEgs_z5), file = "GSEA_Zscore_5size.csv")
+```
+
+*** We repeat this code in order to obtain the `.csv` results for the second threshold (gene set minimum size of 3 genes), directly without having to change anything ***
+
+```{r}
+# Create the incidence matrix indicating what genes belong to what gene set
+Im_3 <- incidence(gsc)
+#dim(Im_3)
+#Im_3[1:2, 1:10]
+
+# We discard genes (columns in Im_3) that do not form part of our data
+Im_3 <- Im_3[, colnames(Im_3) %in% rownames(DEgenes)]
+#dim(Im_3)
+
+# Require gene sets with a minimum size of 3 genes:
+Im_3 <- Im_3[rowSums(Im_3) >= 3, ]
+dim(Im_3)
+Im_3[1:5,1:5]
+
+# Store all moderated t-statistics for the genes forming the incidence matrix of gene sets
+tGSgenes_3 <- DEgenes[match(colnames(Im_3), rownames(DEgenes)), "t"]
+#length(tGSgenes_3)
+#head(tGSgenes_3)
+
+# Calculate the Zs statistic
+zS <- sqrt(rowSums(Im_3)) * (as.vector(Im_3 %*% tGSgenes_3)/rowSums(Im_3))
+#length(zS)
+#head(zS)
+
+# QQ plot of gene set Z-scores
+#qqnorm(zS, cex.lab = 1.5)
+#abline(0, 1)
+
+# Sort the gene sets by Z-score
+rnkGSz <- sort(abs(zS), decreasing = TRUE)
+rnkGSzs <- as.data.frame(sort(abs(zS), decreasing = TRUE))
+colnames(rnkGSzs) <- "z-score"
+#rnkGSzs
+#head(rnkGSz)
+
+# Perform one sample z-test by calculating p-values
+pv_zs <- pmin(pnorm(zS), 1 - pnorm(zS))
+# Number of pathways: 381
+length(zS) 
+# Number of pathways upregulated/downregulated: 211/170
+table(zS>0)
+# Number of pathways significantly enriched (p-value < 0.05): 354
+sum(pv_zs < 0.05) 
+
+# FDR multiple test correction 
+pvadj_zs <- p.adjust(pv_zs, method = "fdr")
+# Number of pathways significantly enriched (FDR < 0.01): 353
+sum(pvadj_zs < 0.01)
+rnkGSpz <- as.data.frame(sort(pvadj_zs, decreasing = FALSE))
+colnames(rnkGSpz) <- "p-value"
+#rnkGSpz
+
+# Merge both Z-score and P-values dataframes into one
+DEgs_z3<- merge(rnkGSzs,rnkGSpz,by="row.names")
+colnames(DEgs_z3) <- c("pathways","z-score","Z_p-value")
+head(DEgs_z3[order(DEgs_z3$`z-score`,decreasing=TRUE),],10)
+
+write.csv(as.data.frame(DEgs_z3), file = "GSEA_Zscore_3size.csv")
+
+```
+
+In the `c2BroadSets` object there are 833 pathways (from KEGG, BIOCARTA and REACTOME). Depending on the gene set size threshold used we remove more or less pathways:
+
+  -Gene set minimum size of 5 genes --> 207 pathways left (124 upregulated, 83 downregulated), from wich 187 were significantly enriched (FDR < 0.01)
+ 
+  -Gene set minimum size of 3 genes --> 381 pathways left  (211 upregulated, 170 downregulated), from wich 353 were significantly enriched (FDR < 0.01)
+
+We discuss the GSEA results in the report. A QQplot (figure \@ref(fig:ZQQplot)) shows a good distribution of the Z-scores.
+
+For some of the most enriched (and/or meaningful) gene sets we can make a scatter plot of the mean expression values comparing tumor vs normal. 
+
+```{r scatterPlotZ, fig.align="center", dpi = 200, fig.width=14, fig.height=4.5, fig.cap="Scatter Plots for some interesting pathways with high Z-score"}
+# Scatter plot
+plotGS <- function(se, gs, pheno, ...) {
+l <- levels(colData(se)[, pheno])
+idxSamples1 <- colData(se)[, pheno] == l[1]
+idxSamples2 <- colData(se)[, pheno] == l[2]
+exps1 <- rowMeans(assays(se)$logCPM[gs, idxSamples1])
+exps2 <- rowMeans(assays(se)$logCPM[gs, idxSamples2])
+rng <- range(c(exps1, exps2))
+plot(exps1, exps2, pch = 21, col = "black", bg = "black", xlim = rng, ylim = rng,
+xlab = l[1], ylab = l[2], ...)
+abline(a = 0, b = 1, lwd = 2, col = "red")
+}
+
+# Vector with indices (from rnkGSz list) of interesting pathways
+pathways <- c(3,6,7,8,9,25,29,30,31,33,41,34,35,49,51,105,111,150,178)
+
+# Plotting only some examples
+
+par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
+genesGS1 <- colnames(Im)[which(Im[names(rnkGSz)[3], ] == 1)]
+genesGS2 <- colnames(Im)[which(Im[names(rnkGSz)[8], ] == 1)]
+genesGS3 <- colnames(Im)[which(Im[names(rnkGSz)[9], ] == 1)]
+plotGS(se.filt4, genesGS1, "type", main = names(rnkGSz)[3], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS2, "type", main = names(rnkGSz)[8], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS3, "type", main = names(rnkGSz)[9], cex.lab = 2, las = 1)
+
+# For loop to plot all interesting pathways
+#for (i in pathways){
+  #genesGS1 <- colnames(Im)[which(Im[names(rnkGSz)[i], ] == 1)]
+  #plotGS(se.filt4, genesGS1, "type", main = names(rnkGSz)[i], cex.lab = 2, las = 1)
+#}
+
+```
+
+These scatter plots (figure \@ref(fig:scatterPlotZ)) helps to decide whether the pathway is upregulated (the majority of the genes are above the diagonal) or downregulated (the majority of the genes are below the diagonal). 
+
+## Change in scale detection (X²-score)
+
+The previous GSEA analysis using Z-score detects shifts in mean expression. However, if half of the genes are up-regulated and the other half down-regulated, the mean shift cancels out. This is what is known as a change in scale. To detect such a change we should rather use the `X²-score`.
+
+We created a data frame containing all pathways with the Z-score and X²-score (and its associated p-values). The interpretation is in the report.
+
+```{r, scatterPlotX, fig.align="center", dpi = 200, fig.width=14, fig.height=4.5, fig.cap="Scatter plots for some interesting pathways with high X2-score"}
+
+#X²-score calculation
+xS <- applyByCategory(tGSgenes_5, Im_5, function(x) (sum((x - mean(x))^2) - (length(x) - 1))/(2 *(length(x) - 1)))
+
+# Sort the gene sets by X²-score
+rnkGSx <- sort(abs(xS), decreasing = TRUE)
+rnkGSxs <- as.data.frame(sort(abs(xS), decreasing = TRUE))
+colnames(rnkGSxs) <- "X2-score"
+#head(rnkGSxs,25)
+
+# Perform one sample z-test by calculating p-values
+pv_xs <- pmin(pnorm(xS), 1 - pnorm(xS))
+# Number of pathways: 207
+length(rnkGSx)
+# Number of pathways significantly enriched (p-value < 0.05): 207
+sum(pv_xs < 0.05)
+
+# FDR multiple test correction 
+pvadj_xs <- p.adjust(pv_xs, method = "fdr")
+# Number of pathways significantly enriched (FDR < 0.01): 207
+sum(pvadj_xs < 0.01)
+
+rnkGSpx <- as.data.frame(sort(pvadj_xs[which(pvadj_xs < 0.01)], decreasing = FALSE))
+colnames(rnkGSpx) <- "p-value"
+#rnkGSpx
+
+# Merge both X2-score and P-values dataframes into one
+DEgs_x5<- merge(rnkGSx,rnkGSpx,by="row.names")
+colnames(DEgs_x5) <- c("pathways","X2-score","X2_p-value")
+
+# Merge both X2-score/p-value and Z-score/p-value into one
+all_DEgs_5 <- merge(DEgs_z5,DEgs_x5)
+head(all_DEgs_5[order(all_DEgs_5$`X2-score`,decreasing=TRUE),],10)
+
+par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
+genesGS1 <- colnames(Im)[which(Im[names(rnkGSx)[1], ] == 1)]
+genesGS2 <- colnames(Im)[which(Im[names(rnkGSx)[45], ] == 1)]
+genesGS3 <- colnames(Im)[which(Im[names(rnkGSx)[36], ] == 1)]
+plotGS(se.filt4, genesGS1, "type", main = names(rnkGSx)[1], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS2, "type", main = names(rnkGSx)[45], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS3, "type", main = names(rnkGSx)[36], cex.lab = 2, las = 1)
+
+# For loop to plot all interesting pathways
+#for (i in pathways){
+  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx)[i], ] == 1)]
+  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx)[i], cex.lab = 2, las = 1)
+#}
+
+write.csv(as.data.frame(DEgs_x5), file = "GSEA_Xscore_5size.csv")
+write.csv(as.data.frame(all_DEgs_5), file = "GSEA_ALL_5size.csv")
+```
+
+*** We repeat this code in order to obtain the `.csv` results for the second threshold (gene set minimum size of 3 genes), directly without having to change anything ***
+
+```{r}
+
+#X²-score calculation
+xS <- applyByCategory(tGSgenes_3, Im_3, function(x) (sum((x - mean(x))^2) - (length(x) - 1))/(2 *(length(x) - 1)))
+
+# Sort the gene sets by X²-score
+rnkGSx <- sort(abs(xS), decreasing = TRUE)
+rnkGSxs <- as.data.frame(sort(abs(xS), decreasing = TRUE))
+colnames(rnkGSxs) <- "X2-score"
+#head(rnkGSxs,25)
+
+# Perform one sample z-test by calculating p-values
+pv_xs <- pmin(pnorm(xS), 1 - pnorm(xS))
+# Number of pathways: 381
+length(rnkGSx)
+# Number of pathways significantly enriched (p-value < 0.05): 378
+sum(pv_xs < 0.05)
+
+# FDR multiple test correction 
+pvadj_xs <- p.adjust(pv_xs, method = "fdr")
+# Number of pathways significantly enriched (FDR < 0.01): 375
+sum(pvadj_xs < 0.01)
+
+rnkGSpx <- as.data.frame(sort(pvadj_xs[which(pvadj_xs < 0.01)], decreasing = FALSE))
+colnames(rnkGSpx) <- "p-value"
+#rnkGSpx
+
+# Merge both X2-score and P-values dataframes into one
+DEgs_x3<- merge(rnkGSx,rnkGSpx,by="row.names")
+colnames(DEgs_x3) <- c("pathways","X2-score","X2_p-value")
+
+# Merge both X2-score/p-value and Z-score/p-value into one
+all_DEgs_3 <- merge(DEgs_z3,DEgs_x3)
+head(all_DEgs_3[order(all_DEgs_3$`X2-score`,decreasing=TRUE),],10)
+
+# For loop to plot all interesting pathways
+#for (i in pathways){
+  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx)[i], ] == 1)]
+  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx)[i], cex.lab = 2, las = 1)
+#}
+
+write.csv(as.data.frame(DEgs_x3), file = "GSEA_Xscore_3size.csv")
+write.csv(as.data.frame(all_DEgs_3), file = "GSEA_ALL_3size.csv")
+```
+
+From the 207 pathways left after filtering by the gene set size of 5, all of them are significantly enriched (FDR < 0.01). As for the threshold of 3 genes, from 383 pathways, 375 are significantly enriched (FDR < 0.01). However, of interest are the pathways that have a high X2-score but a low Z-score, which are pathways that have half genes upregulated and half genes downregulated, as it can be observed in the previous scatter plots (figure \@ref(fig:scatterPlotX)).
+
+## Analysis of interesting DEGs and interesting pathways
+
+We can check the p-value and logFC of some particular genes of interest that we know are related to ccRCC. We can do the same for the genes that are involved in a particular pathway of interest.
+
+```{r echo=TRUE}
+
+## Checking the gene composition of a particular interesting pathway
+
+# VEGF PATHWAY
+VEGF_genes <- colnames(Im)[which(Im[names(rnkGSz)[33], ] == 1)]
+#plotGS(se.filt4, VEGF_genes, "type", main = names(rnkGSz)[33], cex.lab = 2, las = 1)
+tt[VEGF_genes,]
+
+# CELL CYCLE
+CC_genes <- colnames(Im)[which(Im[names(rnkGSz)[49], ] == 1)]
+#plotGS(se.filt4, CC_genes, "type", main = names(rnkGSz)[49], cex.lab = 2, las = 1)
+tt[CC_genes,]
+
+# PI3K pathway
+#PI3K_genes <- colnames(Im)[which(Im[names(rnkGSz)[76], ] == 1)]
+#plotGS(se.filt4, PI3K_genes, "type", main = names(rnkGSz)[76], cex.lab = 2, las = 1)
+#tt[PI3K_genes,]
+
+# AKT pathway
+#AKT_genes <- colnames(Im)[which(Im[names(rnkGSz)[111], ] == 1)]
+#plotGS(se.filt4, AKT_genes, "type", main = names(rnkGSz)[111], cex.lab = 2, las = 1)
+#tt[AKT_genes,]
+
+# MTOR pathway
+#MTOR_genes <- colnames(Im)[which(Im[names(rnkGSz)[341], ] == 1)]
+#plotGS(se.filt4, MTOR_genes, "type", main = names(rnkGSz)[341], cex.lab = 2, las = 1)
+#tt[MTOR_genes,]
+
+## Checking the logFC and adjusted p-value of particular interesting DEGs
+tt[tt$symbol %in% c("HIF1A","EPAS1","VEGFA","PRKAA1","PTEN","PRKAA1","BAP1","PBRM1","SETD2"),]
+
+```
+
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+# References
