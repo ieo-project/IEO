@@ -735,9 +735,9 @@ pathways <- c(3,6,7,8,9,25,29,30,31,33,41,34,35,49,51,105,111,150,178)
 # Plotting only some examples
 
 par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
-genesGS1 <- colnames(Im)[which(Im[names(rnkGSz5)[3], ] == 1)]
-genesGS2 <- colnames(Im)[which(Im[names(rnkGSz5)[8], ] == 1)]
-genesGS3 <- colnames(Im)[which(Im[names(rnkGSz5)[9], ] == 1)]
+genesGS1 <- colnames(Im_5)[which(Im_5[names(rnkGSz5)[3], ] == 1)]
+genesGS2 <- colnames(Im_5)[which(Im_5[names(rnkGSz5)[8], ] == 1)]
+genesGS3 <- colnames(Im_5)[which(Im_5[names(rnkGSz5)[9], ] == 1)]
 plotGS(se.filt4, genesGS1, "type", main = names(rnkGSz5)[3], cex.lab = 2, las = 1)
 plotGS(se.filt4, genesGS2, "type", main = names(rnkGSz5)[8], cex.lab = 2, las = 1)
 plotGS(se.filt4, genesGS3, "type", main = names(rnkGSz5)[9], cex.lab = 2, las = 1)
@@ -794,9 +794,9 @@ all_DEgs_5 <- merge(DEgs_z5,DEgs_x5)
 head(all_DEgs_5[order(all_DEgs_5$`X2-score`,decreasing=TRUE),],10)
 
 par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
-genesGS1 <- colnames(Im)[which(Im[names(rnkGSx5)[1], ] == 1)]
-genesGS2 <- colnames(Im)[which(Im[names(rnkGSx5)[45], ] == 1)]
-genesGS3 <- colnames(Im)[which(Im[names(rnkGSx5)[36], ] == 1)]
+genesGS1 <- colnames(Im_5)[which(Im_5[names(rnkGSx5)[1], ] == 1)]
+genesGS2 <- colnames(Im_5)[which(Im_5[names(rnkGSx5)[45], ] == 1)]
+genesGS3 <- colnames(Im_5)[which(Im_5[names(rnkGSx5)[36], ] == 1)]
 plotGS(se.filt4, genesGS1, "type", main = names(rnkGSx5)[1], cex.lab = 2, las = 1)
 plotGS(se.filt4, genesGS2, "type", main = names(rnkGSx5)[45], cex.lab = 2, las = 1)
 plotGS(se.filt4, genesGS3, "type", main = names(rnkGSx5)[36], cex.lab = 2, las = 1)
@@ -850,7 +850,7 @@ head(all_DEgs_3[order(all_DEgs_3$`X2-score`,decreasing=TRUE),],10)
 
 # For loop to plot all interesting pathways
 #for (i in pathways){
-  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx3)[i], ] == 1)]
+  #topgsgenes <- colnames(Im_3)[which(Im_3[names(rnkGSx3)[i], ] == 1)]
   #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx3)[i], cex.lab = 2, las = 1)
 #}
 
@@ -869,12 +869,12 @@ We can check the p-value and logFC of some particular genes of interest that we 
 ## Checking the gene composition of a particular interesting pathway
 
 # VEGF PATHWAY
-VEGF_genes <- colnames(Im)[which(Im[names(rnkGSz)[33], ] == 1)]
+VEGF_genes <- colnames(Im_5)[which(Im_5[names(rnkGSz5)[33], ] == 1)]
 #plotGS(se.filt4, VEGF_genes, "type", main = names(rnkGSz)[33], cex.lab = 2, las = 1)
 tt[VEGF_genes,]
 
 # CELL CYCLE
-CC_genes <- colnames(Im)[which(Im[names(rnkGSz)[49], ] == 1)]
+CC_genes <- colnames(Im_5)[which(Im_5[names(rnkGSz5)[49], ] == 1)]
 #plotGS(se.filt4, CC_genes, "type", main = names(rnkGSz)[49], cex.lab = 2, las = 1)
 tt[CC_genes,]
 
