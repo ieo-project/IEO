@@ -610,11 +610,11 @@ qqnorm(zS, cex.lab = 1.5)
 abline(0, 1)
 
 # Sort the gene sets by Z-score
-rnkGSz <- sort(abs(zS), decreasing = TRUE)
+rnkGSz5 <- sort(abs(zS), decreasing = TRUE)
 rnkGSzs <- as.data.frame(sort(abs(zS), decreasing = TRUE))
 colnames(rnkGSzs) <- "z-score"
 #rnkGSzs
-#head(rnkGSz)
+#head(rnkGSz5)
 
 # Perform one sample z-test by calculating p-values
 pv_zs <- pmin(pnorm(zS), 1 - pnorm(zS))
@@ -735,12 +735,12 @@ pathways <- c(3,6,7,8,9,25,29,30,31,33,41,34,35,49,51,105,111,150,178)
 # Plotting only some examples
 
 par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
-genesGS1 <- colnames(Im)[which(Im[names(rnkGSz)[3], ] == 1)]
-genesGS2 <- colnames(Im)[which(Im[names(rnkGSz)[8], ] == 1)]
-genesGS3 <- colnames(Im)[which(Im[names(rnkGSz)[9], ] == 1)]
-plotGS(se.filt4, genesGS1, "type", main = names(rnkGSz)[3], cex.lab = 2, las = 1)
-plotGS(se.filt4, genesGS2, "type", main = names(rnkGSz)[8], cex.lab = 2, las = 1)
-plotGS(se.filt4, genesGS3, "type", main = names(rnkGSz)[9], cex.lab = 2, las = 1)
+genesGS1 <- colnames(Im)[which(Im[names(rnkGSz5)[3], ] == 1)]
+genesGS2 <- colnames(Im)[which(Im[names(rnkGSz5)[8], ] == 1)]
+genesGS3 <- colnames(Im)[which(Im[names(rnkGSz5)[9], ] == 1)]
+plotGS(se.filt4, genesGS1, "type", main = names(rnkGSz5)[3], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS2, "type", main = names(rnkGSz5)[8], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS3, "type", main = names(rnkGSz5)[9], cex.lab = 2, las = 1)
 
 # For loop to plot all interesting pathways
 #for (i in pathways){
@@ -764,7 +764,7 @@ We created a data frame containing all pathways with the Z-score and X²-score (
 xS <- applyByCategory(tGSgenes_5, Im_5, function(x) (sum((x - mean(x))^2) - (length(x) - 1))/(2 *(length(x) - 1)))
 
 # Sort the gene sets by X²-score
-rnkGSx <- sort(abs(xS), decreasing = TRUE)
+rnkGSx5 <- sort(abs(xS), decreasing = TRUE)
 rnkGSxs <- as.data.frame(sort(abs(xS), decreasing = TRUE))
 colnames(rnkGSxs) <- "X2-score"
 #head(rnkGSxs,25)
@@ -772,7 +772,7 @@ colnames(rnkGSxs) <- "X2-score"
 # Perform one sample z-test by calculating p-values
 pv_xs <- pmin(pnorm(xS), 1 - pnorm(xS))
 # Number of pathways: 207
-length(rnkGSx)
+length(rnkGSx5)
 # Number of pathways significantly enriched (p-value < 0.05): 207
 sum(pv_xs < 0.05)
 
@@ -786,7 +786,7 @@ colnames(rnkGSpx) <- "p-value"
 #rnkGSpx
 
 # Merge both X2-score and P-values dataframes into one
-DEgs_x5<- merge(rnkGSx,rnkGSpx,by="row.names")
+DEgs_x5<- merge(rnkGSxs,rnkGSpx,by="row.names")
 colnames(DEgs_x5) <- c("pathways","X2-score","X2_p-value")
 
 # Merge both X2-score/p-value and Z-score/p-value into one
@@ -794,17 +794,17 @@ all_DEgs_5 <- merge(DEgs_z5,DEgs_x5)
 head(all_DEgs_5[order(all_DEgs_5$`X2-score`,decreasing=TRUE),],10)
 
 par(mfrow = c(1, 3), mar = c(4, 5, 3, 4))
-genesGS1 <- colnames(Im)[which(Im[names(rnkGSx)[1], ] == 1)]
-genesGS2 <- colnames(Im)[which(Im[names(rnkGSx)[45], ] == 1)]
-genesGS3 <- colnames(Im)[which(Im[names(rnkGSx)[36], ] == 1)]
-plotGS(se.filt4, genesGS1, "type", main = names(rnkGSx)[1], cex.lab = 2, las = 1)
-plotGS(se.filt4, genesGS2, "type", main = names(rnkGSx)[45], cex.lab = 2, las = 1)
-plotGS(se.filt4, genesGS3, "type", main = names(rnkGSx)[36], cex.lab = 2, las = 1)
+genesGS1 <- colnames(Im)[which(Im[names(rnkGSx5)[1], ] == 1)]
+genesGS2 <- colnames(Im)[which(Im[names(rnkGSx5)[45], ] == 1)]
+genesGS3 <- colnames(Im)[which(Im[names(rnkGSx5)[36], ] == 1)]
+plotGS(se.filt4, genesGS1, "type", main = names(rnkGSx5)[1], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS2, "type", main = names(rnkGSx5)[45], cex.lab = 2, las = 1)
+plotGS(se.filt4, genesGS3, "type", main = names(rnkGSx5)[36], cex.lab = 2, las = 1)
 
 # For loop to plot all interesting pathways
 #for (i in pathways){
-  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx)[i], ] == 1)]
-  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx)[i], cex.lab = 2, las = 1)
+  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx5)[i], ] == 1)]
+  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx5)[i], cex.lab = 2, las = 1)
 #}
 
 write.csv(as.data.frame(DEgs_x5), file = "GSEA_Xscore_5size.csv")
@@ -819,7 +819,7 @@ write.csv(as.data.frame(all_DEgs_5), file = "GSEA_ALL_5size.csv")
 xS <- applyByCategory(tGSgenes_3, Im_3, function(x) (sum((x - mean(x))^2) - (length(x) - 1))/(2 *(length(x) - 1)))
 
 # Sort the gene sets by X²-score
-rnkGSx <- sort(abs(xS), decreasing = TRUE)
+rnkGSx3 <- sort(abs(xS), decreasing = TRUE)
 rnkGSxs <- as.data.frame(sort(abs(xS), decreasing = TRUE))
 colnames(rnkGSxs) <- "X2-score"
 #head(rnkGSxs,25)
@@ -827,7 +827,7 @@ colnames(rnkGSxs) <- "X2-score"
 # Perform one sample z-test by calculating p-values
 pv_xs <- pmin(pnorm(xS), 1 - pnorm(xS))
 # Number of pathways: 381
-length(rnkGSx)
+length(rnkGSx3)
 # Number of pathways significantly enriched (p-value < 0.05): 378
 sum(pv_xs < 0.05)
 
@@ -841,7 +841,7 @@ colnames(rnkGSpx) <- "p-value"
 #rnkGSpx
 
 # Merge both X2-score and P-values dataframes into one
-DEgs_x3<- merge(rnkGSx,rnkGSpx,by="row.names")
+DEgs_x3<- merge(rnkGSx3,rnkGSpx,by="row.names")
 colnames(DEgs_x3) <- c("pathways","X2-score","X2_p-value")
 
 # Merge both X2-score/p-value and Z-score/p-value into one
@@ -850,8 +850,8 @@ head(all_DEgs_3[order(all_DEgs_3$`X2-score`,decreasing=TRUE),],10)
 
 # For loop to plot all interesting pathways
 #for (i in pathways){
-  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx)[i], ] == 1)]
-  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx)[i], cex.lab = 2, las = 1)
+  #topgsgenes <- colnames(Im)[which(Im[names(rnkGSx3)[i], ] == 1)]
+  #plotGS(se.filt4, topgsgenes, "type", main = names(rnkGSx3)[i], cex.lab = 2, las = 1)
 #}
 
 write.csv(as.data.frame(DEgs_x3), file = "GSEA_Xscore_3size.csv")
