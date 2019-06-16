@@ -509,6 +509,7 @@ There are 10824 (from 13330) differentially expressed genes (DEGs) at FDR thresh
 
 # Volcano plot for all genes
 ggplot(data=tt) +
+theme_grey(base_size = 22) +
 geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
 scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
 geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
@@ -523,6 +524,7 @@ geom_vline(xintercept = 2, linetype="dashed",
 
 # Volcanot plot for only DEGs with more than 2 abs(logFC)
 ggplot(data=DEgenes) +
+theme_grey(base_size = 22) +
 geom_point(aes(x=logFC,y=-log(P.Value),color=logCPM)) +
 scale_colour_gradientn(colours=c("#000000" ,"#FF0000" ))+
 geom_hline(yintercept=10, linetype="dashed", color = "black",size=1)+
@@ -599,7 +601,7 @@ Im <- Im[, colnames(Im) %in% rownames(DEgenes)]
 #dim(Im)
 
 # Require gene sets with a minimum size of 5 genes: (change to 3 if needed)
-Im <- Im[rowSums(Im) >= 5, ]
+Im <- Im[rowSums(Im) >= 3, ]
 dim(Im)
 Im[1:5,1:5]
 
@@ -628,12 +630,14 @@ colnames(rnkGSzs) <- "z-score"
 pv_zs <- pmin(pnorm(zS), 1 - pnorm(zS))
 # Number of pathways: 207 (gene set size of 5) or 381 (gene set size of 3)
 length(zS) 
+# Number of pathways upregulated/downregulated: 83/124 (gene set size of 5) or 211/170 (gene set size of 3)
+table(zS>0)
 # Number of pathways significantly enriched (p-value < 0.05): 187 (gene set size of 5) or 354 (gene set size of 3)
 sum(pv_zs < 0.05) 
 
 # FDR multiple test correction 
 pvadj_zs <- p.adjust(pv_zs, method = "fdr")
-# Number of pathways significantly enriched (FDR < 0.01): 187 (gene set size of 5) or 354 (gene set size of 3)
+# Number of pathways significantly enriched (FDR < 0.01): 187 (gene set size of 5) or 353 (gene set size of 3)
 sum(pvadj_zs < 0.01)
 rnkGSpz <- as.data.frame(sort(pvadj_zs, decreasing = FALSE))
 colnames(rnkGSpz) <- "p-value"
@@ -753,21 +757,23 @@ plotGS(se.filt4, genesGS3, "type", main = names(rnkGSx)[36], cex.lab = 2, las = 
 #write.csv(as.data.frame(all_DEgs), file = "GSEA_ALL_5size.csv")
 ```
 
-These scatter plots (figure \@ref(fig:scatterPlotX)) show how the pathways with high X2-score have half genes upregulated and half genes downregulated.
+From the 207 pathways left after filtering by the gene set size of 5, all of them are significantly enriched (FDR < 0.01). As for the threshold of 3 genes, from 383 pathways, 375 are significantly enriched (FDR < 0.01). However, of interest are the pathways that have a high X2-score but a low Z-score, which are pathways that have half genes upregulated and half genes downregulated, as it can be observed in the previous scatter plots (figure \@ref(fig:scatterPlotX)).
 
 ## Analysis of interesting DEGs and interesting pathways
 
-```{r}
+We can check the p-value and logFC of some particular genes of interest that we know are related to ccRCC. We can do the same for the genes that are involved in a particular pathway of interest.
+
+```{r echo=TRUE}
 
 ## Checking the gene composition of a particular interesting pathway
 
 # VEGF PATHWAY
-#VEGF_genes <- colnames(Im)[which(Im[names(rnkGSz)[33], ] == 1)]
+VEGF_genes <- colnames(Im)[which(Im[names(rnkGSz)[33], ] == 1)]
 #plotGS(se.filt4, VEGF_genes, "type", main = names(rnkGSz)[33], cex.lab = 2, las = 1)
 tt[VEGF_genes,]
 
 # CELL CYCLE
-#CC_genes <- colnames(Im)[which(Im[names(rnkGSz)[49], ] == 1)]
+CC_genes <- colnames(Im)[which(Im[names(rnkGSz)[49], ] == 1)]
 #plotGS(se.filt4, CC_genes, "type", main = names(rnkGSz)[49], cex.lab = 2, las = 1)
 tt[CC_genes,]
 
@@ -790,6 +796,7 @@ tt[CC_genes,]
 tt[tt$symbol %in% c("HIF1A","EPAS1","VEGFA","PRKAA1","PTEN","PRKAA1","BAP1","PBRM1","SETD2"),]
 
 ```
+
 
 ```{r sessioninfo}
 sessionInfo()
